@@ -79,6 +79,16 @@ Si necesitas migrar manualmente:
 docker-compose exec app npx prisma migrate deploy
 ```
 
+## Prisma Client
+
+El Prisma Client se genera automáticamente de dos formas:
+
+1. **Durante la instalación de dependencias**: El script `postinstall` en `server/package.json` ejecuta `prisma generate` automáticamente después de `npm install` o `npm ci`.
+
+2. **En el Dockerfile**: La etapa de producción ejecuta explícitamente `npx prisma generate` después de copiar el schema de Prisma, asegurando que el cliente esté disponible incluso si el postinstall no se ejecuta.
+
+Esto garantiza que el Prisma Client esté siempre disponible en producción.
+
 ## Health Checks
 
 El servicio tiene health checks implementados:
@@ -140,6 +150,25 @@ Si el build de Docker funciona pero falla al iniciar los contenedores:
 
 3. Reiniciar base de datos:
    docker-compose restart db
+```
+
+### Error: "@prisma/client did not initialize yet"
+
+Si ves el error `@prisma/client did not initialize yet. Please run "prisma generate"`:
+
+```bash
+# Este error ocurría antes de la versión con el fix integrado
+# Ahora se resuelve automáticamente con:
+# 1. El script postinstall que ejecuta prisma generate
+# 2. El comando explícito en el Dockerfile
+
+# Si persiste, verificar:
+1. Que el build completó correctamente
+   docker-compose logs app | grep "prisma generate"
+
+2. Regenerar manualmente si es necesario:
+   docker-compose exec app npx prisma generate
+   docker-compose restart app
 ```
 
 ### Error: "Can't connect to app"
