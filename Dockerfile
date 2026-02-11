@@ -69,6 +69,9 @@ RUN npm ci --only=production
 COPY --from=backend-build /app/server/dist ./dist
 COPY --from=backend-build /app/server/prisma ./prisma
 
+# Generar Prisma Client
+RUN npx prisma generate
+
 # Copiar frontend compilado a carpeta pública del backend
 COPY --from=frontend-build /app/dist ./public
 
