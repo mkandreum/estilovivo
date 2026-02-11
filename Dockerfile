@@ -61,16 +61,15 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
+# Copy Prisma schema BEFORE installing dependencies (needed for postinstall script)
+COPY --from=backend-build /app/server/prisma ./prisma
+
 # Instalar solo runtime deps
 COPY server/package*.json ./
 RUN npm ci --only=production
 
 # Copiar backend compilado
 COPY --from=backend-build /app/server/dist ./dist
-COPY --from=backend-build /app/server/prisma ./prisma
-
-# Generar Prisma Client
-RUN npx prisma generate
 
 # Copiar frontend compilado a carpeta pública del backend
 COPY --from=frontend-build /app/dist ./public
