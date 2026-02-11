@@ -1,0 +1,351 @@
+import React, { useState } from 'react';
+import { Calendar, CloudSun, CheckSquare, Plus, ArrowRight, Trash2, MapPin, ArrowLeft, X } from 'lucide-react';
+import { Trip, TripItem } from '../types';
+
+interface SuitcaseProps {
+    isEmbedded?: boolean;
+}
+
+const Suitcase: React.FC<SuitcaseProps> = ({ isEmbedded = false }) => {
+    // --- STATE ---
+    
+    // List of Trips
+    const [trips, setTrips] = useState<Trip[]>([
+        {
+            id: 't-1',
+            destination: 'Roma',
+            dateStart: '12 Oct',
+            dateEnd: '16 Oct',
+            items: [
+                { id: '1', label: 'Pasaporte', checked: true, isEssential: true },
+                { id: '2', label: 'Cargador Universal', checked: true, isEssential: true },
+                { id: '3', label: 'Abrigo Ligero', checked: false, isEssential: false },
+            ]
+        },
+        {
+            id: 't-2',
+            destination: 'Casa Rural',
+            dateStart: '03 Nov',
+            dateEnd: '05 Nov',
+            items: [
+                { id: '1', label: 'Botas montaña', checked: false, isEssential: true },
+                { id: '2', label: 'Impermeable', checked: false, isEssential: true },
+            ]
+        }
+    ]);
+
+    // Navigation State
+    // Default to null so we see the list first (allowing to add new trips) even when embedded
+    const [activeTripId, setActiveTripId] = useState<string | null>(null);
+    const [isCreating, setIsCreating] = useState(false);
+
+    // Form State for New Trip
+    const [newTripForm, setNewTripForm] = useState({ destination: '', dateStart: '', dateEnd: '' });
+    
+    // Input State for New Item in a Trip
+    const [newItemText, setNewItemText] = useState('');
+    const [isAddingItem, setIsAddingItem] = useState(false);
+
+    // --- DERIVED STATE ---
+    const activeTrip = trips.find(t => t.id === activeTripId);
+    
+    // --- HANDLERS ---
+
+    const handleCreateTrip = () => {
+        if (!newTripForm.destination || !newTripForm.dateStart) return;
+
+        const newTrip: Trip = {
+            id: `t-${Date.now()}`,
+            destination: newTripForm.destination,
+            dateStart: newTripForm.dateStart,
+            dateEnd: newTripForm.dateEnd || 'TBD',
+            items: [
+                { id: 'def-1', label: 'Documentación', checked: false, isEssential: true },
+                { id: 'def-2', label: 'Neceser básico', checked: false, isEssential: true },
+            ]
+        };
+
+        setTrips([newTrip, ...trips]);
+        setNewTripForm({ destination: '', dateStart: '', dateEnd: '' });
+        setIsCreating(false);
+        setActiveTripId(newTrip.id); // Auto-open new trip
+    };
+
+    const handleDeleteTrip = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        setTrips(trips.filter(t => t.id !== id));
+        if (activeTripId === id) setActiveTripId(null);
+    };
+
+    const toggleCheck = (itemId: string) => {
+        if (!activeTripId) return;
+        setTrips(trips.map(t => {
+            if (t.id === activeTripId) {
+                return {
+                    ...t,
+                    items: t.items.map(i => i.id === itemId ? { ...i, checked: !i.checked } : i)
+                };
+            }
+            return t;
+        }));
+    };
+
+    const addItemToTrip = () => {
+        if (!newItemText.trim() || !activeTripId) return;
+        const newItem: TripItem = {
+            id: Date.now().toString(),
+            label: newItemText,
+            checked: false,
+            isEssential: false
+        };
+        
+        setTrips(trips.map(t => {
+            if (t.id === activeTripId) {
+                return { ...t, items: [...t.items, newItem] };
+            }
+            return t;
+        }));
+        
+        setNewItemText('');
+        setIsAddingItem(false);
+    };
+
+    // Calculate progress for active trip
+    const progress = activeTrip 
+        ? Math.round((activeTrip.items.filter(i => i.checked).length / activeTrip.items.length) * 100) || 0
+        : 0;
+
+    // --- RENDER VIEW: LIST OF TRIPS ---
+    if (!activeTrip && !isCreating) {
+        return (
+            <div className={`h-full flex flex-col ${isEmbedded ? 'px-6 bg-transparent' : 'p-6 pb-24 bg-blue-50/50'}`}>
+                {/* Header always visible to allow adding trips */}
+                <header className={`flex justify-between items-end mb-6 ${isEmbedded ? 'mt-2' : 'mt-4'}`}>
+                    <div>
+                        <h1 className={`${isEmbedded ? 'text-xl' : 'text-2xl'} font-bold text-gray-800`}>Mis Viajes</h1>
+                        <p className="text-gray-500 text-sm">{trips.length} aventuras planeadas</p>
+                    </div>
+                    <button 
+                        onClick={() => setIsCreating(true)}
+                        className="bg-primary text-white p-2 rounded-xl shadow-lg shadow-primary/30"
+                    >
+                        <Plus size={isEmbedded ? 20 : 24} />
+                    </button>
+                </header>
+
+                <div className="space-y-4 overflow-y-auto no-scrollbar pb-20 flex-1">
+                    {trips.map(trip => {
+                        const tripProgress = Math.round((trip.items.filter(i => i.checked).length / trip.items.length) * 100) || 0;
+                        return (
+                            <div 
+                                key={trip.id}
+                                onClick={() => setActiveTripId(trip.id)}
+                                className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-all cursor-pointer group relative overflow-hidden"
+                            >
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-full -mr-8 -mt-8 transition-transform group-hover:scale-110" />
+                                
+                                <div className="relative z-10 flex justify-between items-start">
+                                    <div>
+                                        <h3 className="text-xl font-bold text-gray-800 mb-1">{trip.destination}</h3>
+                                        <div className="flex items-center text-gray-400 text-xs font-medium">
+                                            <Calendar size={12} className="mr-1" />
+                                            <span>{trip.dateStart} - {trip.dateEnd}</span>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={(e) => handleDeleteTrip(e, trip.id)}
+                                        className="text-gray-300 hover:text-red-400 p-1"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+
+                                <div className="mt-4">
+                                    <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                                        <span>Progreso</span>
+                                        <span>{tripProgress}%</span>
+                                    </div>
+                                    <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
+                                        <div className="h-full bg-primary rounded-full" style={{ width: `${tripProgress}%` }} />
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+
+                    {/* Empty State for List */}
+                    {trips.length === 0 && (
+                        <div className="text-center py-10 opacity-60">
+                            <MapPin size={48} className="mx-auto text-gray-300 mb-2" />
+                            <p className="text-gray-500">No tienes viajes creados.</p>
+                            <button onClick={() => setIsCreating(true)} className="text-primary font-bold mt-2">Crear uno ahora</button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    // --- RENDER VIEW: CREATE TRIP ---
+    if (isCreating) {
+        return (
+            <div className={`h-full flex flex-col ${isEmbedded ? 'px-6' : 'p-6 bg-white'}`}>
+                <div className="flex items-center mb-6 mt-4">
+                    <button onClick={() => setIsCreating(false)} className="mr-4 text-gray-500 hover:bg-gray-100 p-1 rounded-full">
+                        <ArrowLeft size={24} />
+                    </button>
+                    <h1 className="text-xl font-bold text-gray-800">Nuevo Viaje</h1>
+                </div>
+
+                <div className="space-y-6">
+                    <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2">Destino</label>
+                        <input 
+                            type="text" 
+                            className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-lg font-medium outline-none focus:border-primary"
+                            placeholder="Ej: París, Playa..."
+                            value={newTripForm.destination}
+                            onChange={e => setNewTripForm({...newTripForm, destination: e.target.value})}
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-2">Fecha Ida</label>
+                            <input 
+                                type="text" 
+                                className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 outline-none focus:border-primary"
+                                placeholder="12 Oct"
+                                value={newTripForm.dateStart}
+                                onChange={e => setNewTripForm({...newTripForm, dateStart: e.target.value})}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-2">Fecha Vuelta</label>
+                            <input 
+                                type="text" 
+                                className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 outline-none focus:border-primary"
+                                placeholder="16 Oct"
+                                value={newTripForm.dateEnd}
+                                onChange={e => setNewTripForm({...newTripForm, dateEnd: e.target.value})}
+                            />
+                        </div>
+                    </div>
+
+                    <button 
+                        disabled={!newTripForm.destination}
+                        onClick={handleCreateTrip}
+                        className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl shadow-lg mt-8 transition-colors"
+                    >
+                        Crear Maleta
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    // --- RENDER VIEW: TRIP DETAILS (The original view) ---
+    return (
+        <div className={`h-full flex flex-col ${isEmbedded ? 'px-6 bg-transparent' : 'p-6 pb-24 bg-blue-50/50'}`}>
+            <header className={`flex justify-between items-end mb-6 ${isEmbedded ? 'mt-2' : 'mt-4'}`}>
+                <div className="flex items-center">
+                    <button onClick={() => setActiveTripId(null)} className="mr-3 bg-white p-1.5 rounded-full text-gray-500 shadow-sm border border-gray-100">
+                        <ArrowLeft size={20} />
+                    </button>
+                    <div>
+                        <h1 className={`${isEmbedded ? 'text-xl' : 'text-xl'} font-bold text-gray-800`}>Maleta</h1>
+                        <p className="text-gray-500 text-xs">Preparando viaje</p>
+                    </div>
+                </div>
+            </header>
+
+            {/* Active Trip Card */}
+            {activeTrip && (
+                <>
+                    <div className="bg-white rounded-3xl p-6 shadow-xl shadow-blue-900/5 relative overflow-hidden mb-6 transition-all border border-blue-50 flex-shrink-0">
+                        {/* Background Decor */}
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-50 rounded-full -mr-8 -mt-8" />
+                        
+                        <div className="relative z-10">
+                            <div className="flex justify-between items-start mb-6">
+                                <div>
+                                    <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-1 rounded-md mb-2 inline-block">PRÓXIMO</span>
+                                    <h2 className="text-3xl font-bold text-primary">{activeTrip.destination}</h2>
+                                    <div className="flex items-center text-gray-400 text-sm mt-1">
+                                        <Calendar size={14} className="mr-1" />
+                                        <span>{activeTrip.dateStart} - {activeTrip.dateEnd}</span>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col items-center bg-gray-50 p-2 rounded-xl border border-gray-100">
+                                    <CloudSun size={24} className="text-gold mb-1" />
+                                    <span className="text-xs font-bold text-gray-600">--°C</span>
+                                </div>
+                            </div>
+
+                            {/* Progress */}
+                            <div className="mb-4">
+                                <div className="flex justify-between text-xs font-medium mb-1">
+                                    <span className="text-gray-500">Maleta llena</span>
+                                    <span className="text-primary">{progress}%</span>
+                                </div>
+                                <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
+                                    <div 
+                                        className="h-full bg-primary rounded-full transition-all duration-500 ease-out" 
+                                        style={{ width: `${progress}%` }}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Checklist */}
+                    <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex-1 overflow-hidden flex flex-col">
+                        <div className="flex justify-between items-center mb-4 flex-shrink-0">
+                            <h3 className="font-bold text-gray-800 flex items-center">
+                                <CheckSquare size={18} className="mr-2 text-primary" />
+                                Esenciales
+                            </h3>
+                            <button 
+                                onClick={() => setIsAddingItem(!isAddingItem)}
+                                className={`text-primary p-1 rounded-full transition-colors ${isAddingItem ? 'bg-primary text-white' : 'bg-primary/10'}`}
+                            >
+                                {isAddingItem ? <X size={16} /> : <Plus size={16} />}
+                            </button>
+                        </div>
+
+                        {isAddingItem && (
+                            <div className="flex mb-4 gap-2 flex-shrink-0">
+                                <input 
+                                    autoFocus
+                                    type="text" 
+                                    className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
+                                    placeholder="Nuevo item..."
+                                    value={newItemText}
+                                    onChange={(e) => setNewItemText(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && addItemToTrip()}
+                                />
+                                <button onClick={addItemToTrip} className="text-xs font-bold bg-primary text-white px-3 rounded-lg">OK</button>
+                            </div>
+                        )}
+
+                        <div className="overflow-y-auto no-scrollbar pr-1">
+                            <ul className="space-y-3">
+                                {activeTrip.items.map((item) => (
+                                    <li key={item.id} className="flex items-center group cursor-pointer" onClick={() => toggleCheck(item.id)}>
+                                        <div className={`w-5 h-5 rounded-md border flex items-center justify-center mr-3 transition-colors ${item.checked ? 'bg-primary border-primary text-white' : 'border-gray-300'}`}>
+                                            {item.checked && <span className="text-xs">✓</span>}
+                                        </div>
+                                        <span className={`flex-1 transition-colors ${item.checked ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
+                                            {item.label}
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+};
+
+export default Suitcase;
