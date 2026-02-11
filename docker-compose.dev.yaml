@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: estilovivo-db-dev
+    environment:
+      POSTGRES_USER: estilovivo
+      POSTGRES_PASSWORD: dev_password
+      POSTGRES_DB: estilovivo_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    networks:
+      - estilovivo-dev
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      target: development
+    container_name: estilovivo-backend-dev
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DATABASE_URL: postgresql://estilovivo:dev_password@db:5432/estilovivo_dev?schema=public
+      UPLOADS_DIR: /app/uploads
+    volumes:
+      - ./server/src:/app/src
+      - ./server/prisma:/app/prisma
+      - uploads_dev_data:/app/uploads
+    depends_on:
+      - db
+    networks:
+      - estilovivo-dev
+    command: sh -c "npx prisma migrate dev && npm run dev"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      target: development
+    container_name: estilovivo-frontend-dev
+    environment:
+      VITE_API_URL: /api
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - estilovivo-dev
+
+networks:
+  estilovivo-dev:
+    driver: bridge
+
+volumes:
+  postgres_dev_data:
+  uploads_dev_data:
