@@ -4,18 +4,22 @@
 # ============= STAGE 1: Dependencies =============
 FROM node:20-alpine AS dependencies
 
+# Ensure we install ALL dependencies (including devDependencies) for building
+ENV NODE_ENV=development
+
 WORKDIR /app
 
 # Copiar package.json de ambos lados
 COPY package*.json ./
 COPY server/package*.json ./server/
 
-# Instalar frontend deps
-RUN npm install
+# Instalar frontend deps (including devDependencies needed for build)
+# Using npm ci for reproducible installs, fallback to npm install
+RUN npm ci --prefer-offline --no-audit || npm install --prefer-offline --no-audit
 
-# Instalar backend deps
+# Instalar backend deps (including devDependencies needed for build)
 WORKDIR /app/server
-RUN npm install
+RUN npm ci --prefer-offline --no-audit || npm install --prefer-offline --no-audit
 
 WORKDIR /app
 
