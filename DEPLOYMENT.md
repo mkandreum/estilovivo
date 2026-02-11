@@ -1,5 +1,14 @@
 # 🚀 Despliegue en Coolify - EstiloVivo
 
+## ⚠️ Configuración Compatible con Coolify
+
+El archivo `docker-compose.yaml` está optimizado para despliegue en Coolify:
+- ✅ Sin definiciones de redes personalizadas (Coolify las maneja automáticamente)
+- ✅ Sin nombres de contenedores fijos (permite rolling updates sin downtime)
+- ✅ Sin mapeo de puertos del host (Coolify usa proxy inverso)
+- ✅ Usa `expose` en lugar de `ports` para la aplicación
+- ✅ Base de datos no expuesta externamente (solo accesible internamente)
+
 ## Pasos para Desplegar
 
 ### 1. En Coolify Dashboard
@@ -9,20 +18,21 @@
    - Nombre: `estilovivo`
 
 2. **Subir archivo compose**
-   - Usar `docker-compose.yml` (el de la raíz del proyecto)
-   - NO usar el `docker-compose.dev.yaml`
+   - Usar `docker-compose.yaml` (el de la raíz del proyecto)
+   - Este archivo está optimizado para Coolify
 
 ### 2. Configurar Variables de Ambiente
 
-En Coolify, add these environment variables:
+En Coolify, añade estas variables de ambiente (marcar como **Runtime only** o dejar sin marcar "Available at Buildtime"):
 
 ```
 DB_USER=estilovivo
 DB_PASSWORD=GENERATE_STRONG_PASSWORD_HERE
 DB_NAME=estilovivo_prod
-PORT=3000
 NODE_ENV=production
 ```
+
+**Importante:** `NODE_ENV=production` debe ser **Runtime only**, NO buildtime. El Dockerfile ya maneja el buildtime correctamente.
 
 ### 3. Configurar Dominio
 
