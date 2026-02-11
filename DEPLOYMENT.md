@@ -114,6 +114,21 @@ cat backup.sql | docker-compose exec -T db psql -U estilovivo estilovivo_prod
 
 ## Troubleshooting
 
+### Error: "Build succeeds but deployment fails during container start"
+
+Si el build de Docker funciona pero falla al iniciar los contenedores:
+
+1. **Verificar que el docker-compose.yaml está optimizado para Coolify:**
+   - ❌ NO debe tener redes personalizadas (networks)
+   - ❌ NO debe tener nombres de contenedores fijos (container_name)
+   - ❌ NO debe exponer puertos de la base de datos al host
+   - ✅ La app debe usar `expose` en lugar de `ports`
+   - ✅ Coolify maneja el enrutamiento mediante dominios
+
+2. **Revisar logs de Coolify:**
+   - En el dashboard, ir a "Logs" para ver el error exacto
+   - Buscar errores de red o conflictos de nombres
+
 ### Error: "Database connection failed"
 
 ```bash
@@ -133,7 +148,8 @@ cat backup.sql | docker-compose exec -T db psql -U estilovivo estilovivo_prod
 1. Revisar health check:
    docker-compose exec app curl http://localhost:3000/api/health
 
-2. Revisar puerto 3000 esté abierto en Coolify
+2. En Coolify, verificar que el dominio esté configurado correctamente
+3. El puerto 3000 se expone internamente, Coolify enruta por dominio
 ```
 
 ### Refrescar después de actualizar código
