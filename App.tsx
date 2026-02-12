@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import Home from './pages/Home';
 import Wardrobe from './pages/Wardrobe';
@@ -7,111 +7,146 @@ import Planner from './pages/Planner';
 import Community from './pages/Community';
 import Profile from './pages/Profile';
 import Suitcase from './pages/Suitcase';
-import { UserState, Garment, Look, PlannerEntry } from './types';
-
-// Initial Mock Data
-const initialGarments: Garment[] = Array.from({ length: 12 }).map((_, i) => ({
-  id: `g-${i}`,
-  imageUrl: `https://picsum.photos/seed/${i + 100}/300/400`,
-  type: i % 4 === 0 ? 'top' : i % 4 === 1 ? 'bottom' : i % 4 === 2 ? 'shoes' : 'outerwear',
-  color: 'varios',
-  season: 'all',
-  usageCount: Math.floor(Math.random() * 10),
-  forSale: false,
-  price: 0
-}));
-
-const initialLooks: Look[] = [
-  { id: 'l-1', name: 'Oficina Casual', garmentIds: ['g-0', 'g-1', 'g-2'], tags: ['work'], createdAt: new Date().toISOString() },
-  { id: 'l-2', name: 'Domingo Relax', garmentIds: ['g-4', 'g-5'], tags: ['chill'], createdAt: new Date().toISOString() }
-];
+import AuthPage from './pages/AuthPage';
+import { UserState, Garment, Look, PlannerEntry, Trip } from './types';
+import { api } from './services/api';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('home');
-  
-  // GLOBAL STATE
-  const [user, setUser] = useState<UserState>({
-    name: 'Sofia',
-    mood: null,
-    cycleTracking: false,
-    musicSync: false,
-    bio: 'Amante de la moda sostenible 🌱'
-  });
+  const [isLoading, setIsLoading] = useState(true);
 
-  const [garments, setGarments] = useState<Garment[]>(initialGarments);
-  const [looks, setLooks] = useState<Look[]>(initialLooks);
-  const [planner, setPlanner] = useState<PlannerEntry[]>([
-    { date: '2023-10-12', lookId: 'l-1', eventNote: 'Reunión Marketing' }
-  ]);
+  // GLOBAL STATE
+  const [user, setUser] = useState<UserState | null>(null);
+  const [garments, setGarments] = useState<Garment[]>([]);
+  const [looks, setLooks] = useState<Look[]>([]);
+  const [planner, setPlanner] = useState<PlannerEntry[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
+
+  // Fetch initial data & check auth
+  useEffect(() => {
+    const init = async () => {
+      const token = localStorage.getItem('beyour_token');
+      if (token) {
+        try {
+          const savedUser = localStorage.getItem('beyour_user');
+          if (savedUser) setUser(JSON.parse(savedUser));
+
+          const [fetchedGarments, fetchedLooks, fetchedPlanner, fetchedTrips] = await Promise.all([
+            api.getGarments(),
+            api.getLooks(),
+            api.getPlanner('me'),
+            api.getTrips('me')
+          ]);
+          setGarments(fetchedGarments);
+          setLooks(fetchedLooks);
+          setPlanner(fetchedPlanner);
+          setTrips(fetchedTrips);
+        } catch (error) {
+          console.error("Error loading data:", error);
+          localStorage.removeItem('beyour_token');
+          localStorage.removeItem('beyour_user');
+          setUser(null);
+        }
+      }
+      setIsLoading(false);
+    };
+    init();
+  }, []);
+
+  const handleAuthSuccess = (userData: UserState) => {
+    setUser(userData);
+    localStorage.setItem('beyour_user', JSON.stringify(userData));
+    window.location.reload();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthPage onAuthSuccess={handleAuthSuccess} />;
+  }
 
   // HANDLERS
-  const handleMoodChange = (mood: string) => setUser({ ...user, mood });
-  
-  const addGarment = (garment: Garment) => setGarments([garment, ...garments]);
-  const removeGarment = (id: string) => setGarments(garments.filter(g => g.id !== id));
-  
-  // Update a garment (e.g., mark as for sale)
-  const updateGarment = (updatedGarment: Garment) => {
-    setGarments(garments.map(g => g.id === updatedGarment.id ? updatedGarment : g));
-  };
-
-  const saveLook = (look: Look) => {
-    setLooks([look, ...looks]);
-    setActiveTab('wardrobe'); // Or stay? Let's go to wardrobe/looks view usually
-  };
-
-  const updatePlanner = (entry: PlannerEntry) => {
-    const existing = planner.findIndex(p => p.date === entry.date);
-    if (existing >= 0) {
-      const newPlanner = [...planner];
-      newPlanner[existing] = entry;
-      setPlanner(newPlanner);
-    } else {
-      setPlanner([...planner, entry]);
+  const handleMoodChange = (mood: string) => {
+    if (user) {
+      setUser({ ...user, mood: mood as any });
     }
   };
 
-  const renderContent = () => {
+  const addGarment = async (garment: Garment) => {
+    setGarments([garment, ...garments]);
+  };
+
+  const saveLook = async (look: Look) => {
+    try {
+      const savedLook = await api.saveLook(look, user.id || 'me');
+      setLooks([savedLook, ...looks]);
+      setActiveTab('wardrobe');
+    } catch (error) {
+      console.error("Error saving look:", error);
+    }
+  };
+
+  const updatePlanner = (entry: PlannerEntry) => {
+    const newPlanner = [...planner.filter(e => e.date !== entry.date), entry];
+    setPlanner(newPlanner);
+  };
+
+  const renderActivePage = () => {
     switch (activeTab) {
       case 'home':
-        return <Home user={user} onMoodChange={handleMoodChange} onNavigate={setActiveTab} />;
+        return <Home user={user} looks={looks} onMoodChange={handleMoodChange} />;
       case 'wardrobe':
-        return (
-            <Wardrobe 
-                garments={garments} 
-                onAddGarment={addGarment} 
-                onRemoveGarment={removeGarment}
-                onUpdateGarment={updateGarment}
-            />
-        );
+        return <Wardrobe garments={garments} onAddGarment={addGarment} looks={looks} planner={planner} onUpdatePlanner={updatePlanner} />;
       case 'create':
         return <CreateLook garments={garments} onSaveLook={saveLook} />;
       case 'planner':
-        return <Planner looks={looks} plannerEntries={planner} onUpdateEntry={updatePlanner} />;
+        return (
+          <Planner
+            looks={looks}
+            plannerEntries={planner}
+            onUpdateEntry={async (entry) => {
+              const saved = await api.updatePlanner('me', entry);
+              setPlanner(prev => {
+                const filtered = prev.filter(p => p.date !== entry.date);
+                return [...filtered, saved];
+              });
+            }}
+          />
+        );
       case 'community':
         return <Community />;
       case 'profile':
-        return (
-            <Profile 
-                user={user} 
-                onUpdateUser={setUser} 
-                garmentCount={garments.length} 
-                lookCount={looks.length}
-                plannerEntries={planner}
-                looks={looks}
-                onNavigate={setActiveTab}
-            />
-        );
+        return <Profile user={user} plannerEntries={planner} looks={looks} onUpdateUser={setUser} />;
       case 'suitcase':
-        return <Suitcase />;
+        return (
+          <Suitcase
+            trips={trips}
+            onAddTrip={async (newTrip) => {
+              const saved = await api.saveTrip('me', newTrip);
+              setTrips(prev => [saved, ...prev]);
+            }}
+            onDeleteTrip={async (id) => {
+              setTrips(prev => prev.filter(t => t.id !== id));
+            }}
+            onUpdateTrip={async (trip) => {
+              setTrips(prev => prev.map(t => t.id === trip.id ? trip : t));
+            }}
+          />
+        );
       default:
-        return <Home user={user} onMoodChange={handleMoodChange} onNavigate={setActiveTab} />;
+        return <Home user={user} looks={looks} onMoodChange={handleMoodChange} />;
     }
   };
 
   return (
-    <Layout activeTab={activeTab} onTabChange={setActiveTab}>
-      {renderContent()}
+    <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
+      {renderActivePage()}
     </Layout>
   );
 };
