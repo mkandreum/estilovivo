@@ -11,16 +11,21 @@ datasource db {
 }
 
 model User {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  name      String
-  avatar    String?
-  bio       String?
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id                String     @id @default(cuid())
+  email             String     @unique
+  password          String
+  name              String
+  avatar            String?
+  bio               String?
+  resetToken        String?
+  resetTokenExpiry  DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
   
-  products  Product[]
-  looks     Look[]
+  products          Product[]
+  looks             Look[]
+  plannerEntries    PlannerEntry[]
+  trips             Trip[]
 }
 
 model Product {
@@ -33,6 +38,8 @@ model Product {
   size        String?
   color       String?
   condition   String     @default("new")
+  usageCount  Int        @default(0)
+  forSale     Boolean    @default(false)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   
@@ -57,6 +64,7 @@ model Look {
   id          String     @id @default(cuid())
   title       String
   description String?
+  isPublic    Boolean    @default(false)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   
@@ -75,4 +83,35 @@ model LookImage {
   
   lookId    String
   look      Look       @relation(fields: [lookId], references: [id], onDelete: Cascade)
+}
+
+model PlannerEntry {
+  id        String   @id @default(cuid())
+  date      String   // ISO date string YYYY-MM-DD
+  lookId    String?
+  look      Look?    @relation(fields: [lookId], references: [id])
+  eventNote String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+}
+
+model Trip {
+  id          String     @id @default(cuid())
+  destination String
+  dateStart   String
+  dateEnd     String
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items       TripItem[]
+}
+
+model TripItem {
+  id          String  @id @default(cuid())
+  label       String
+  checked     Boolean @default(false)
+  isEssential Boolean @default(false)
+  tripId      String
+  trip        Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
 }

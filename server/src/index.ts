@@ -6,6 +6,10 @@ import { PrismaClient } from '@prisma/client';
 import dotenv from 'dotenv';
 import multer from 'multer';
 import { mkdirSync, existsSync } from 'fs';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import nodemailer from 'nodemailer';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -18,6 +22,17 @@ const prisma = new PrismaClient();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const UPLOADS_DIR = process.env.UPLOADS_DIR || '/app/uploads';
 const NODE_ENV = process.env.NODE_ENV || 'development';
+const JWT_SECRET = process.env.JWT_SECRET || 'beyour-secret-key-12345';
+
+// Mailer Config
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.example.com',
+  port: parseInt(process.env.SMTP_PORT || '587'),
+  auth: {
+    user: process.env.SMTP_USER || 'user@example.com',
+    pass: process.env.SMTP_PASS || 'password',
+  },
+});
 
 // Crear directorio de uploads si no existe
 if (!existsSync(UPLOADS_DIR)) {
@@ -35,7 +50,7 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
 // Middleware
 app.use(cors());
@@ -45,6 +60,20 @@ app.use(express.urlencoded({ extended: true }));
 // Servir archivos estáticos de uploads
 app.use('/api/uploads', express.static(UPLOADS_DIR));
 
+// ============= AUTH MIDDLEWARE =============
+const authenticateToken = (req: any, res: Response, next: NextFunction) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) return res.status(401).json({ error: 'Token required' });
+
+  jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+    if (err) return res.status(403).json({ error: 'Invalid or expired token' });
+    req.user = user;
+    next();
+  });
+};
+
 // ============= RUTAS API =============
 
 // Health check
@@ -52,9 +81,82 @@ app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', env: NODE_ENV });
 });
 
+// ============= AUTHENTICATION =============
+
+// REGISTER
+app.post('/api/auth/register', async (req: Request, res: Response) => {
+  try {
+    const { email, password, name } = req.body;
+
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) return res.status(400).json({ error: 'Email already registered' });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await prisma.user.create({
+      data: { email, password: hashedPassword, name }
+    });
+
+    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    const { password: _, ...userWithoutPassword } = user;
+    res.status(201).json({ user: userWithoutPassword, token });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error during registration' });
+  }
+});
+
+// LOGIN
+app.post('/api/auth/login', async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+
+    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    const { password: _, ...userWithoutPassword } = user;
+    res.json({ user: userWithoutPassword, token });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// FORGOT PASSWORD
+app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiry = new Date(Date.now() + 3600000); // 1 hour
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { resetToken: token, resetTokenExpiry: expiry }
+    });
+
+    const resetUrl = `${process.env.APP_URL || 'http://localhost:3000'}/reset-password?token=${token}`;
+
+    await transporter.sendMail({
+      from: '"Beyour" <no-reply@beyour.app>',
+      to: user.email,
+      subject: 'Recuperar contraseña - Beyour',
+      html: `<p>Hola ${user.name}, haz clic en el siguiente enlace para restablecer tu contraseña:</p><a href="${resetUrl}">${resetUrl}</a>`
+    });
+
+    res.json({ message: 'Recovery email sent' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error during forgot password process' });
+  }
+});
+
 // ============= PRODUCTOS =============
 
-// GET todos los productos
 app.get('/api/products', async (req: Request, res: Response) => {
   try {
     const products = await prisma.product.findMany({
@@ -71,48 +173,22 @@ app.get('/api/products', async (req: Request, res: Response) => {
   }
 });
 
-// GET producto por ID
-app.get('/api/products/:id', async (req: Request, res: Response) => {
+app.post('/api/products', authenticateToken, upload.array('images', 5), async (req: any, res: Response) => {
   try {
-    const product = await prisma.product.findUnique({
-      where: { id: req.params.id },
-      include: {
-        images: true,
-        user: { select: { id: true, name: true, avatar: true } },
-      },
-    });
-    if (!product) {
-      return res.status(404).json({ error: 'Product not found' });
-    }
-    res.json(product);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error fetching product' });
-  }
-});
-
-// POST crear producto
-app.post('/api/products', upload.array('images', 5), async (req: Request, res: Response) => {
-  try {
-    const { name, description, price, brand, category, size, color, userId } = req.body;
+    const { name, category, userId } = req.body;
     const files = req.files as Express.Multer.File[] | undefined;
 
     const product = await prisma.product.create({
       data: {
         name,
-        description,
-        price: price ? parseFloat(price) : null,
-        brand,
         category,
-        size,
-        color,
-        userId,
+        userId: userId || req.user.userId,
         images: {
           create: files
             ? files.map((file) => ({
-                filename: file.filename,
-                url: `/api/uploads/${file.filename}`,
-              }))
+              filename: file.filename,
+              url: `/api/uploads/${file.filename}`,
+            }))
             : [],
         },
       },
@@ -126,58 +202,8 @@ app.post('/api/products', upload.array('images', 5), async (req: Request, res: R
   }
 });
 
-// DELETE producto
-app.delete('/api/products/:id', async (req: Request, res: Response) => {
-  try {
-    await prisma.product.delete({
-      where: { id: req.params.id },
-    });
-    res.json({ message: 'Product deleted' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error deleting product' });
-  }
-});
-
-// ============= USUARIOS =============
-
-// GET perfil usuario
-app.get('/api/users/:id', async (req: Request, res: Response) => {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.params.id },
-      include: {
-        products: { include: { images: true } },
-        looks: { include: { images: true } },
-      },
-    });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    res.json(user);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error fetching user' });
-  }
-});
-
-// POST crear usuario
-app.post('/api/users', async (req: Request, res: Response) => {
-  try {
-    const { email, name, avatar, bio } = req.body;
-    const user = await prisma.user.create({
-      data: { email, name, avatar, bio },
-    });
-    res.status(201).json(user);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error creating user' });
-  }
-});
-
 // ============= LOOKS =============
 
-// GET todos los looks
 app.get('/api/looks', async (req: Request, res: Response) => {
   try {
     const looks = await prisma.look.findMany({
@@ -195,30 +221,29 @@ app.get('/api/looks', async (req: Request, res: Response) => {
   }
 });
 
-// POST crear look
-app.post('/api/looks', upload.array('images', 10), async (req: Request, res: Response) => {
+app.post('/api/looks', authenticateToken, upload.array('images', 10), async (req: any, res: Response) => {
   try {
-    const { title, description, userId, productIds } = req.body;
+    const { title, userId, productIds, isPublic } = req.body;
     const files = req.files as Express.Multer.File[] | undefined;
 
     const look = await prisma.look.create({
       data: {
         title,
-        description,
-        userId,
+        userId: userId || req.user.userId,
+        isPublic: isPublic === 'true' || isPublic === true,
         products: {
-          connect: productIds ? productIds.map((id: string) => ({ id })) : [],
+          connect: productIds ? JSON.parse(productIds).map((id: string) => ({ id })) : [],
         },
         images: {
           create: files
             ? files.map((file) => ({
-                filename: file.filename,
-                url: `/api/uploads/${file.filename}`,
-              }))
+              filename: file.filename,
+              url: `/api/uploads/${file.filename}`,
+            }))
             : [],
         },
       },
-      include: { images: true, products: true },
+      include: { images: true, products: { include: { images: true } } },
     });
 
     res.status(201).json(look);
@@ -228,36 +253,98 @@ app.post('/api/looks', upload.array('images', 10), async (req: Request, res: Res
   }
 });
 
+// ============= PLANNER =============
+
+app.get('/api/planner/:userId', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const userId = req.params.userId === 'me' ? (req as any).user.userId : req.params.userId;
+    const entries = await prisma.plannerEntry.findMany({
+      where: { userId },
+      include: { look: { include: { images: true } } }
+    });
+    res.json(entries);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error fetching planner' });
+  }
+});
+
+app.post('/api/planner', authenticateToken, async (req: any, res: Response) => {
+  try {
+    const { date, lookId, eventNote, userId } = req.body;
+    const targetUserId = userId === 'me' ? req.user.userId : userId;
+
+    const entry = await prisma.plannerEntry.upsert({
+      where: { userId_date: { userId: targetUserId, date } },
+      update: { lookId, eventNote },
+      create: { date, lookId, eventNote, userId: targetUserId },
+      include: { look: { include: { images: true } } }
+    });
+    res.json(entry);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error updating planner' });
+  }
+});
+
+// ============= TRIPS =============
+
+app.get('/api/trips/:userId', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const userId = req.params.userId === 'me' ? (req as any).user.userId : req.params.userId;
+    const trips = await prisma.trip.findMany({
+      where: { userId },
+      include: { items: true }
+    });
+    res.json(trips);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error fetching trips' });
+  }
+});
+
+app.post('/api/trips', authenticateToken, async (req: any, res: Response) => {
+  try {
+    const { destination, dateStart, dateEnd, items, userId } = req.body;
+    const targetUserId = userId === 'me' ? req.user.userId : userId;
+
+    const trip = await prisma.trip.create({
+      data: {
+        destination,
+        dateStart,
+        dateEnd,
+        userId: targetUserId,
+        items: {
+          create: items ? items.map((i: any) => ({
+            label: i.label,
+            checked: i.checked || false,
+            isEssential: i.isEssential || false
+          })) : []
+        }
+      },
+      include: { items: true }
+    });
+    res.status(201).json(trip);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error creating trip' });
+  }
+});
+
 // ============= FRONTEND SPA =============
 
-// Servir el frontend compilado en ruta raíz
-const frontendPath = NODE_ENV === 'production' 
-  ? path.join(__dirname, '../public') 
+const frontendPath = NODE_ENV === 'production'
+  ? path.join(__dirname, '../public')
   : path.join(__dirname, '../../dist');
 
 if (NODE_ENV === 'production') {
   app.use(express.static(frontendPath));
-
-  // Redirigir todas las rutas que no sean /api a index.html (SPA)
   app.get('*', (req: Request, res: Response) => {
     if (!req.path.startsWith('/api')) {
       res.sendFile(path.join(frontendPath, 'index.html'));
     }
   });
 }
-
-// ============= MANEJO DE ERRORES =============
-
-// 404 handler
-app.use((req: Request, res: Response) => {
-  if (req.path.startsWith('/api')) {
-    res.status(404).json({ error: 'API endpoint not found' });
-  } else if (NODE_ENV === 'production') {
-    res.sendFile(path.join(frontendPath, 'index.html'));
-  } else {
-    res.status(404).json({ error: 'Not found' });
-  }
-});
 
 // Error handler
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
@@ -275,7 +362,6 @@ async function main() {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`✓ Server running on port ${PORT}`);
       console.log(`  API: http://localhost:${PORT}/api`);
-      console.log(`  Web: http://localhost:${PORT}`);
       console.log(`  Env: ${NODE_ENV}`);
     });
   } catch (error) {
