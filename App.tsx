@@ -187,7 +187,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
+    <Layout activeTab={activeTab} onTabChange={setActiveTab}>
       {renderActivePage()}
     </Layout>
   );
