@@ -31,18 +31,41 @@ const App: React.FC = () => {
           const savedUser = localStorage.getItem('beyour_user');
           if (savedUser) setUser(JSON.parse(savedUser));
 
-          const [fetchedGarments, fetchedLooks, fetchedPlanner, fetchedTrips] = await Promise.all([
-            api.getGarments(),
-            api.getLooks(),
-            api.getPlanner('me'),
-            api.getTrips('me')
-          ]);
-          setGarments(fetchedGarments);
-          setLooks(fetchedLooks);
-          setPlanner(fetchedPlanner);
-          setTrips(fetchedTrips);
+          // Fetch data with individual error handling
+          try {
+            const fetchedGarments = await api.getGarments();
+            setGarments(fetchedGarments);
+          } catch (error) {
+            console.warn("Could not load garments:", error);
+            setGarments([]);
+          }
+
+          try {
+            const fetchedLooks = await api.getLooks();
+            setLooks(fetchedLooks);
+          } catch (error) {
+            console.warn("Could not load looks:", error);
+            setLooks([]);
+          }
+
+          try {
+            const fetchedPlanner = await api.getPlanner('me');
+            setPlanner(fetchedPlanner);
+          } catch (error) {
+            console.warn("Could not load planner:", error);
+            setPlanner([]);
+          }
+
+          try {
+            const fetchedTrips = await api.getTrips('me');
+            setTrips(fetchedTrips);
+          } catch (error) {
+            console.warn("Could not load trips:", error);
+            setTrips([]);
+          }
         } catch (error) {
-          console.error("Error loading data:", error);
+          console.error("Critical error during initialization:", error);
+          // Only logout on critical errors (like invalid user data)
           localStorage.removeItem('beyour_token');
           localStorage.removeItem('beyour_user');
           setUser(null);
