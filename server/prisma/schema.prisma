@@ -73,6 +73,7 @@ model Look {
   
   products    Product[]
   images      LookImage[]
+  plannerEntries PlannerEntry[]
 }
 
 model LookImage {
