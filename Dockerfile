@@ -4,6 +4,8 @@
 # ============= STAGE 1: Dependencies =============
 FROM node:20-alpine AS dependencies
 
+RUN apk add --no-cache openssl curl
+
 # Ensure we install ALL dependencies (including devDependencies) for building
 ENV NODE_ENV=development
 
@@ -12,6 +14,7 @@ WORKDIR /app
 # Copiar package.json de ambos lados
 COPY package*.json ./
 COPY server/package*.json ./server/
+COPY server/prisma ./server/prisma
 
 # Instalar frontend deps (including devDependencies needed for build)
 # Using npm ci for reproducible installs, fallback to npm install
@@ -56,6 +59,8 @@ RUN npm run build
 
 # ============= STAGE 4: Production Runtime =============
 FROM node:20-alpine AS production
+
+RUN apk add --no-cache openssl curl
 
 WORKDIR /app
 
