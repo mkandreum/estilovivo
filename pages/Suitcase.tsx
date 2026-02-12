@@ -3,52 +3,28 @@ import { Calendar, CloudSun, CheckSquare, Plus, ArrowRight, Trash2, MapPin, Arro
 import { Trip, TripItem } from '../types';
 
 interface SuitcaseProps {
+    trips: Trip[];
+    onAddTrip: (trip: Trip) => void;
+    onDeleteTrip: (id: string) => void;
+    onUpdateTrip: (trip: Trip) => void;
     isEmbedded?: boolean;
 }
 
-const Suitcase: React.FC<SuitcaseProps> = ({ isEmbedded = false }) => {
-    // --- STATE ---
-    
-    // List of Trips
-    const [trips, setTrips] = useState<Trip[]>([
-        {
-            id: 't-1',
-            destination: 'Roma',
-            dateStart: '12 Oct',
-            dateEnd: '16 Oct',
-            items: [
-                { id: '1', label: 'Pasaporte', checked: true, isEssential: true },
-                { id: '2', label: 'Cargador Universal', checked: true, isEssential: true },
-                { id: '3', label: 'Abrigo Ligero', checked: false, isEssential: false },
-            ]
-        },
-        {
-            id: 't-2',
-            destination: 'Casa Rural',
-            dateStart: '03 Nov',
-            dateEnd: '05 Nov',
-            items: [
-                { id: '1', label: 'Botas montaña', checked: false, isEssential: true },
-                { id: '2', label: 'Impermeable', checked: false, isEssential: true },
-            ]
-        }
-    ]);
-
+const Suitcase: React.FC<SuitcaseProps> = ({ trips, onAddTrip, onDeleteTrip, onUpdateTrip, isEmbedded = false }) => {
     // Navigation State
-    // Default to null so we see the list first (allowing to add new trips) even when embedded
     const [activeTripId, setActiveTripId] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
 
     // Form State for New Trip
     const [newTripForm, setNewTripForm] = useState({ destination: '', dateStart: '', dateEnd: '' });
-    
+
     // Input State for New Item in a Trip
     const [newItemText, setNewItemText] = useState('');
     const [isAddingItem, setIsAddingItem] = useState(false);
 
     // --- DERIVED STATE ---
     const activeTrip = trips.find(t => t.id === activeTripId);
-    
+
     // --- HANDLERS ---
 
     const handleCreateTrip = () => {
@@ -60,58 +36,52 @@ const Suitcase: React.FC<SuitcaseProps> = ({ isEmbedded = false }) => {
             dateStart: newTripForm.dateStart,
             dateEnd: newTripForm.dateEnd || 'TBD',
             items: [
-                { id: 'def-1', label: 'Documentación', checked: false, isEssential: true },
-                { id: 'def-2', label: 'Neceser básico', checked: false, isEssential: true },
+                { id: `i-${Date.now()}-1`, label: 'Documentación', checked: false, isEssential: true },
+                { id: `i-${Date.now()}-2`, label: 'Neceser básico', checked: false, isEssential: true },
             ]
         };
 
-        setTrips([newTrip, ...trips]);
+        onAddTrip(newTrip);
         setNewTripForm({ destination: '', dateStart: '', dateEnd: '' });
         setIsCreating(false);
-        setActiveTripId(newTrip.id); // Auto-open new trip
+        setActiveTripId(newTrip.id);
     };
 
     const handleDeleteTrip = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
-        setTrips(trips.filter(t => t.id !== id));
+        onDeleteTrip(id);
         if (activeTripId === id) setActiveTripId(null);
     };
 
     const toggleCheck = (itemId: string) => {
-        if (!activeTripId) return;
-        setTrips(trips.map(t => {
-            if (t.id === activeTripId) {
-                return {
-                    ...t,
-                    items: t.items.map(i => i.id === itemId ? { ...i, checked: !i.checked } : i)
-                };
-            }
-            return t;
-        }));
+        if (!activeTrip) return;
+        const updatedTrip = {
+            ...activeTrip,
+            items: activeTrip.items.map(i => i.id === itemId ? { ...i, checked: !i.checked } : i)
+        };
+        onUpdateTrip(updatedTrip);
     };
 
     const addItemToTrip = () => {
-        if (!newItemText.trim() || !activeTripId) return;
+        if (!newItemText.trim() || !activeTrip) return;
         const newItem: TripItem = {
-            id: Date.now().toString(),
+            id: `i-${Date.now()}`,
             label: newItemText,
             checked: false,
             isEssential: false
         };
-        
-        setTrips(trips.map(t => {
-            if (t.id === activeTripId) {
-                return { ...t, items: [...t.items, newItem] };
-            }
-            return t;
-        }));
-        
+
+        onUpdateTrip({
+            ...activeTrip,
+            items: [...activeTrip.items, newItem]
+        });
+
         setNewItemText('');
         setIsAddingItem(false);
     };
 
     // Calculate progress for active trip
-    const progress = activeTrip 
+    const progress = activeTrip
         ? Math.round((activeTrip.items.filter(i => i.checked).length / activeTrip.items.length) * 100) || 0
         : 0;
 
@@ -119,13 +89,12 @@ const Suitcase: React.FC<SuitcaseProps> = ({ isEmbedded = false }) => {
     if (!activeTrip && !isCreating) {
         return (
             <div className={`h-full flex flex-col ${isEmbedded ? 'px-6 bg-transparent' : 'p-6 pb-24 bg-blue-50/50'}`}>
-                {/* Header always visible to allow adding trips */}
                 <header className={`flex justify-between items-end mb-6 ${isEmbedded ? 'mt-2' : 'mt-4'}`}>
                     <div>
                         <h1 className={`${isEmbedded ? 'text-xl' : 'text-2xl'} font-bold text-gray-800`}>Mis Viajes</h1>
                         <p className="text-gray-500 text-sm">{trips.length} aventuras planeadas</p>
                     </div>
-                    <button 
+                    <button
                         onClick={() => setIsCreating(true)}
                         className="bg-primary text-white p-2 rounded-xl shadow-lg shadow-primary/30"
                     >
@@ -137,13 +106,13 @@ const Suitcase: React.FC<SuitcaseProps> = ({ isEmbedded = false }) => {
                     {trips.map(trip => {
                         const tripProgress = Math.round((trip.items.filter(i => i.checked).length / trip.items.length) * 100) || 0;
                         return (
-                            <div 
+                            <div
                                 key={trip.id}
                                 onClick={() => setActiveTripId(trip.id)}
                                 className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-all cursor-pointer group relative overflow-hidden"
                             >
                                 <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-full -mr-8 -mt-8 transition-transform group-hover:scale-110" />
-                                
+
                                 <div className="relative z-10 flex justify-between items-start">
                                     <div>
                                         <h3 className="text-xl font-bold text-gray-800 mb-1">{trip.destination}</h3>
@@ -152,7 +121,7 @@ const Suitcase: React.FC<SuitcaseProps> = ({ isEmbedded = false }) => {
                                             <span>{trip.dateStart} - {trip.dateEnd}</span>
                                         </div>
                                     </div>
-                                    <button 
+                                    <button
                                         onClick={(e) => handleDeleteTrip(e, trip.id)}
                                         className="text-gray-300 hover:text-red-400 p-1"
                                     >
@@ -173,7 +142,6 @@ const Suitcase: React.FC<SuitcaseProps> = ({ isEmbedded = false }) => {
                         );
                     })}
 
-                    {/* Empty State for List */}
                     {trips.length === 0 && (
                         <div className="text-center py-10 opacity-60">
                             <MapPin size={48} className="mx-auto text-gray-300 mb-2" />
@@ -200,38 +168,38 @@ const Suitcase: React.FC<SuitcaseProps> = ({ isEmbedded = false }) => {
                 <div className="space-y-6">
                     <div>
                         <label className="block text-sm font-bold text-gray-700 mb-2">Destino</label>
-                        <input 
-                            type="text" 
+                        <input
+                            type="text"
                             className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-lg font-medium outline-none focus:border-primary"
                             placeholder="Ej: París, Playa..."
                             value={newTripForm.destination}
-                            onChange={e => setNewTripForm({...newTripForm, destination: e.target.value})}
+                            onChange={e => setNewTripForm({ ...newTripForm, destination: e.target.value })}
                         />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-bold text-gray-700 mb-2">Fecha Ida</label>
-                            <input 
-                                type="text" 
+                            <input
+                                type="text"
                                 className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 outline-none focus:border-primary"
                                 placeholder="12 Oct"
                                 value={newTripForm.dateStart}
-                                onChange={e => setNewTripForm({...newTripForm, dateStart: e.target.value})}
+                                onChange={e => setNewTripForm({ ...newTripForm, dateStart: e.target.value })}
                             />
                         </div>
                         <div>
                             <label className="block text-sm font-bold text-gray-700 mb-2">Fecha Vuelta</label>
-                            <input 
-                                type="text" 
+                            <input
+                                type="text"
                                 className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 outline-none focus:border-primary"
                                 placeholder="16 Oct"
                                 value={newTripForm.dateEnd}
-                                onChange={e => setNewTripForm({...newTripForm, dateEnd: e.target.value})}
+                                onChange={e => setNewTripForm({ ...newTripForm, dateEnd: e.target.value })}
                             />
                         </div>
                     </div>
 
-                    <button 
+                    <button
                         disabled={!newTripForm.destination}
                         onClick={handleCreateTrip}
                         className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl shadow-lg mt-8 transition-colors"
@@ -243,7 +211,7 @@ const Suitcase: React.FC<SuitcaseProps> = ({ isEmbedded = false }) => {
         );
     }
 
-    // --- RENDER VIEW: TRIP DETAILS (The original view) ---
+    // --- RENDER VIEW: TRIP DETAILS ---
     return (
         <div className={`h-full flex flex-col ${isEmbedded ? 'px-6 bg-transparent' : 'p-6 pb-24 bg-blue-50/50'}`}>
             <header className={`flex justify-between items-end mb-6 ${isEmbedded ? 'mt-2' : 'mt-4'}`}>
@@ -252,19 +220,16 @@ const Suitcase: React.FC<SuitcaseProps> = ({ isEmbedded = false }) => {
                         <ArrowLeft size={20} />
                     </button>
                     <div>
-                        <h1 className={`${isEmbedded ? 'text-xl' : 'text-xl'} font-bold text-gray-800`}>Maleta</h1>
+                        <h1 className="text-xl font-bold text-gray-800">Maleta</h1>
                         <p className="text-gray-500 text-xs">Preparando viaje</p>
                     </div>
                 </div>
             </header>
 
-            {/* Active Trip Card */}
             {activeTrip && (
                 <>
                     <div className="bg-white rounded-3xl p-6 shadow-xl shadow-blue-900/5 relative overflow-hidden mb-6 transition-all border border-blue-50 flex-shrink-0">
-                        {/* Background Decor */}
                         <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-50 rounded-full -mr-8 -mt-8" />
-                        
                         <div className="relative z-10">
                             <div className="flex justify-between items-start mb-6">
                                 <div>
@@ -280,31 +245,25 @@ const Suitcase: React.FC<SuitcaseProps> = ({ isEmbedded = false }) => {
                                     <span className="text-xs font-bold text-gray-600">--°C</span>
                                 </div>
                             </div>
-
-                            {/* Progress */}
                             <div className="mb-4">
                                 <div className="flex justify-between text-xs font-medium mb-1">
                                     <span className="text-gray-500">Maleta llena</span>
                                     <span className="text-primary">{progress}%</span>
                                 </div>
                                 <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
-                                    <div 
-                                        className="h-full bg-primary rounded-full transition-all duration-500 ease-out" 
-                                        style={{ width: `${progress}%` }}
-                                    />
+                                    <div className="h-full bg-primary rounded-full transition-all duration-500 ease-out" style={{ width: `${progress}%` }} />
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Checklist */}
                     <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex-1 overflow-hidden flex flex-col">
                         <div className="flex justify-between items-center mb-4 flex-shrink-0">
                             <h3 className="font-bold text-gray-800 flex items-center">
                                 <CheckSquare size={18} className="mr-2 text-primary" />
                                 Esenciales
                             </h3>
-                            <button 
+                            <button
                                 onClick={() => setIsAddingItem(!isAddingItem)}
                                 className={`text-primary p-1 rounded-full transition-colors ${isAddingItem ? 'bg-primary text-white' : 'bg-primary/10'}`}
                             >
@@ -314,9 +273,9 @@ const Suitcase: React.FC<SuitcaseProps> = ({ isEmbedded = false }) => {
 
                         {isAddingItem && (
                             <div className="flex mb-4 gap-2 flex-shrink-0">
-                                <input 
+                                <input
                                     autoFocus
-                                    type="text" 
+                                    type="text"
                                     className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
                                     placeholder="Nuevo item..."
                                     value={newItemText}

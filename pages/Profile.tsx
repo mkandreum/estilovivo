@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { User as UserIcon, Settings, Calendar, ShoppingBag, LogOut, Edit2, Music, Moon, ChevronRight } from 'lucide-react';
 import { api } from '../services/api';
-import { UserState, PlannerEntry, Look } from '../types';
+import { UserState, PlannerEntry, Look, Garment } from '../types';
 
 interface ProfileProps {
     user: UserState;
     plannerEntries: PlannerEntry[];
     looks: Look[];
+    garments: Garment[];
     onUpdateUser: (user: UserState) => void;
 }
 
-const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdateUser }) => {
+const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, garments, onUpdateUser }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editForm, setEditForm] = useState({ name: user.name, bio: user.bio || '' });
 
@@ -34,6 +35,10 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
         return looks.find(l => l.id === lookId)?.name || 'Look';
     };
 
+    const garmentCount = garments.length;
+    const lookCount = looks.length;
+    const saleCount = garments.filter(g => g.forSale).length;
+
     return (
         <div className="pb-24 bg-white min-h-full">
             <div className="p-8 pb-12 rounded-b-[3rem] bg-gradient-to-b from-gray-50 to-white relative overflow-hidden">
@@ -46,7 +51,7 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
 
                 <div className="flex items-center space-x-4 mt-4">
                     <div className="w-20 h-20 rounded-full border-2 border-primary p-1 flex-shrink-0">
-                        <img src={user.avatar || 'https://picsum.photos/seed/profile/200/200'} className="w-full h-full rounded-full object-cover" alt="Profile" />
+                        <img src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=0F4C5C&color=fff`} className="w-full h-full rounded-full object-cover" alt="Profile" />
                     </div>
                     <div className="flex-1">
                         {isEditing ? (
@@ -75,7 +80,7 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
                                         <Edit2 size={14} />
                                     </button>
                                 </div>
-                                <p className="text-sm text-gray-500 mb-2">{user.bio}</p>
+                                <p className="text-sm text-gray-500 mb-2">{user.bio || 'Sin bio'}</p>
                                 <div className="flex space-x-2">
                                     <span className="text-xs bg-lavender-50 text-indigo-600 px-2 py-1 rounded-md font-medium">✨ Creativa</span>
                                     <span className="text-xs bg-orange-50 text-orange-600 px-2 py-1 rounded-md font-medium">🌱 Sostenible</span>
@@ -88,15 +93,15 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
 
             <div className="p-6 grid grid-cols-3 gap-3 mb-6 -mt-8 relative z-10">
                 <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 text-center">
-                    <span className="block text-2xl font-bold text-primary">??</span>
+                    <span className="block text-2xl font-bold text-primary">{garmentCount}</span>
                     <span className="text-xs text-gray-400">Prendas</span>
                 </div>
                 <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 text-center">
-                    <span className="block text-2xl font-bold text-primary">{looks.length}</span>
+                    <span className="block text-2xl font-bold text-primary">{lookCount}</span>
                     <span className="text-xs text-gray-400">Looks</span>
                 </div>
                 <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 text-center">
-                    <span className="block text-2xl font-bold text-primary">--</span>
+                    <span className="block text-2xl font-bold text-primary">{saleCount}</span>
                     <span className="text-xs text-gray-400">Ventas</span>
                 </div>
             </div>
@@ -112,6 +117,9 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
                             <p className="text-xs font-bold text-gray-800 truncate">{getLookName(entry.lookId)}</p>
                         </div>
                     ))}
+                    {plannerEntries.length === 0 && (
+                        <p className="text-[10px] text-gray-400 py-4 italic">No hay planes próximos.</p>
+                    )}
                 </div>
             </div>
 

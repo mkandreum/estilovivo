@@ -100,9 +100,26 @@ const App: React.FC = () => {
   const renderActivePage = () => {
     switch (activeTab) {
       case 'home':
-        return <Home user={user} looks={looks} onMoodChange={handleMoodChange} />;
+        return <Home user={user} looks={looks} onMoodChange={handleMoodChange} onNavigate={setActiveTab} plannerEntries={planner} garments={garments} />;
       case 'wardrobe':
-        return <Wardrobe garments={garments} onAddGarment={addGarment} looks={looks} planner={planner} onUpdatePlanner={updatePlanner} />;
+        return (
+          <Wardrobe
+            garments={garments}
+            onAddGarment={addGarment}
+            onRemoveGarment={async (id) => {
+              // TODO: api call for delete
+              setGarments(prev => prev.filter(g => g.id !== id));
+            }}
+            onUpdateGarment={async (g) => {
+              // TODO: api call for update
+              setGarments(prev => prev.map(item => item.id === g.id ? g : item));
+            }}
+            looks={looks}
+            planner={planner}
+            onUpdatePlanner={updatePlanner}
+            onNavigate={setActiveTab}
+          />
+        );
       case 'create':
         return <CreateLook garments={garments} onSaveLook={saveLook} />;
       case 'planner':
@@ -122,7 +139,7 @@ const App: React.FC = () => {
       case 'community':
         return <Community />;
       case 'profile':
-        return <Profile user={user} plannerEntries={planner} looks={looks} onUpdateUser={setUser} />;
+        return <Profile user={user} plannerEntries={planner} looks={looks} onUpdateUser={setUser} garments={garments} />;
       case 'suitcase':
         return (
           <Suitcase
@@ -132,15 +149,17 @@ const App: React.FC = () => {
               setTrips(prev => [saved, ...prev]);
             }}
             onDeleteTrip={async (id) => {
+              // api.deleteTrip(id)
               setTrips(prev => prev.filter(t => t.id !== id));
             }}
             onUpdateTrip={async (trip) => {
+              // api.updateTrip(trip)
               setTrips(prev => prev.map(t => t.id === trip.id ? trip : t));
             }}
           />
         );
       default:
-        return <Home user={user} looks={looks} onMoodChange={handleMoodChange} />;
+        return <Home user={user} looks={looks} onMoodChange={handleMoodChange} onNavigate={setActiveTab} plannerEntries={planner} garments={garments} />;
     }
   };
 

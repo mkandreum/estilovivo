@@ -40,6 +40,7 @@ COPY App.tsx ./
 COPY types.ts ./
 COPY components ./components
 COPY pages ./pages
+COPY services ./services
 
 # Build React
 RUN npm run build

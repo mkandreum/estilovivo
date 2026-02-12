@@ -1,11 +1,14 @@
 import React from 'react';
-import { UserState, MoodOption } from '../types';
+import { UserState, MoodOption, Look, PlannerEntry, Garment } from '../types';
 import { Sun, Sparkles, Wind, Briefcase, ChevronRight, RefreshCcw } from 'lucide-react';
 
 interface HomeProps {
   user: UserState;
   onMoodChange: (mood: string) => void;
   onNavigate: (tab: string) => void;
+  plannerEntries: PlannerEntry[];
+  looks: Look[];
+  garments: Garment[];
 }
 
 const moods: MoodOption[] = [
@@ -15,7 +18,30 @@ const moods: MoodOption[] = [
   { id: 'powerful', label: 'Poderosa', emoji: '⚡', colorClass: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
 ];
 
-const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate }) => {
+const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate, plannerEntries, looks, garments }) => {
+  // Real stats
+  const mostUsedGarment = [...garments].sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0))[0];
+  const lowUsageCount = garments.filter(g => (g.usageCount || 0) < 2).length;
+
+  // Weekly Planner logic
+  const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const today = new Date();
+
+  const weeklyPlanner = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date();
+    d.setDate(today.getDate() - today.getDay() + i); // Start from Sunday
+    const dateStr = d.toISOString().split('T')[0];
+    const entry = plannerEntries.find(e => e.date === dateStr);
+    const look = entry ? looks.find(l => l.id === entry.lookId) : null;
+    return {
+      day: days[i],
+      date: dateStr,
+      isToday: d.toDateString() === today.toDateString(),
+      lookImage: look ? "https://picsum.photos/100/100?random=" + look.id : null,
+      hasEntry: !!entry
+    };
+  });
+
   return (
     <div className="p-6 space-y-8 animate-fade-in">
       {/* Header & Welcome */}
@@ -32,11 +58,10 @@ const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate }) => {
           <button
             key={m.id}
             onClick={() => onMoodChange(m.id)}
-            className={`flex-shrink-0 px-4 py-3 rounded-2xl border flex items-center space-x-2 transition-all transform active:scale-95 ${
-              user.mood === m.id
+            className={`flex-shrink-0 px-4 py-3 rounded-2xl border flex items-center space-x-2 transition-all transform active:scale-95 ${user.mood === m.id
                 ? 'bg-primary text-white border-primary shadow-lg ring-2 ring-offset-2 ring-primary/30'
                 : 'bg-white border-gray-100 text-gray-600 shadow-sm hover:border-gray-200'
-            }`}
+              }`}
           >
             <span className="text-xl">{m.emoji}</span>
             <span className="font-medium text-sm">{m.label}</span>
@@ -46,7 +71,7 @@ const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate }) => {
 
       {/* Main CTA */}
       <section>
-        <button 
+        <button
           onClick={() => onNavigate('create')}
           className="w-full bg-primary text-white p-5 rounded-3xl shadow-xl shadow-primary/20 flex items-center justify-between group hover:bg-teal-900 transition-colors"
         >
@@ -69,16 +94,16 @@ const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate }) => {
           </button>
         </div>
         <div className="flex space-x-3 overflow-x-auto no-scrollbar pb-2">
-          {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day, i) => (
-            <div key={day} className="flex flex-col items-center space-y-2">
-              <span className={`text-xs font-medium ${i === 2 ? 'text-primary' : 'text-gray-400'}`}>{day}</span>
-              <div className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center relative overflow-hidden ${i === 2 ? 'border-accent shadow-md' : 'border-dashed border-gray-200 bg-gray-50'}`}>
-                {i === 2 ? (
-                   <img src="https://picsum.photos/100/100?random=1" className="w-full h-full object-cover" alt="Look" />
-                ) : i === 3 ? (
-                  <span className="text-gray-300 text-xs text-center leading-none px-1">Planear</span>
+          {weeklyPlanner.map((day) => (
+            <div key={day.date} className="flex flex-col items-center space-y-2">
+              <span className={`text-xs font-medium ${day.isToday ? 'text-primary' : 'text-gray-400'}`}>{day.day}</span>
+              <div className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center relative overflow-hidden ${day.isToday ? 'border-accent shadow-md' : 'border-dashed border-gray-200 bg-gray-50'}`}>
+                {day.lookImage ? (
+                  <img src={day.lookImage} className="w-full h-full object-cover" alt="Look" />
+                ) : day.isToday ? (
+                  <span className="text-gray-300 text-[10px] text-center leading-none px-1">Planear</span>
                 ) : (
-                   <div className="w-2 h-2 rounded-full bg-gray-200" />
+                  <div className="w-2 h-2 rounded-full bg-gray-200" />
                 )}
               </div>
             </div>
@@ -96,34 +121,40 @@ const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate }) => {
           <div className="bg-lavender-50 p-3 rounded-2xl">
             <p className="text-xs text-gray-500 mb-1">Más usada</p>
             <div className="flex items-center space-x-2">
-              <img src="https://picsum.photos/seed/fav/50/50" className="w-8 h-8 rounded-full object-cover" />
-              <span className="text-xs font-semibold text-gray-700 line-clamp-2">Blazer Azul</span>
+              {mostUsedGarment ? (
+                <>
+                  <img src={mostUsedGarment.imageUrl} className="w-8 h-8 rounded-full object-cover" />
+                  <span className="text-[10px] font-semibold text-gray-700 line-clamp-2 capitalize">{mostUsedGarment.type}</span>
+                </>
+              ) : (
+                <span className="text-[10px] text-gray-400">Sin datos</span>
+              )}
             </div>
           </div>
           <div className="bg-orange-50 p-3 rounded-2xl">
-            <p className="text-xs text-gray-500 mb-1">Olvidadas</p>
+            <p className="text-xs text-gray-500 mb-1">Baja rotación</p>
             <div className="flex items-center space-x-2">
-              <span className="text-xl font-bold text-accent">12</span>
-              <span className="text-[10px] text-gray-600 leading-tight">prendas sin usar este mes</span>
+              <span className="text-xl font-bold text-accent">{lowUsageCount}</span>
+              <span className="text-[10px] text-gray-600 leading-tight">prendas olvidadas</span>
             </div>
           </div>
         </div>
       </section>
-      
+
       {/* Quick Access Grid */}
       <div className="grid grid-cols-2 gap-3 pt-2">
-         <button onClick={() => onNavigate('suitcase')} className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm text-left hover:border-primary/30 transition-all">
-            <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-2">
-                <Briefcase size={16} />
-            </div>
-            <span className="font-medium text-gray-700 text-sm">Próximo Viaje</span>
-         </button>
-         <button className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm text-left hover:border-primary/30 transition-all">
-            <div className="w-8 h-8 rounded-full bg-yellow-50 text-yellow-600 flex items-center justify-center mb-2">
-                <Sun size={16} />
-            </div>
-            <span className="font-medium text-gray-700 text-sm">Reto del Día</span>
-         </button>
+        <button onClick={() => onNavigate('suitcase')} className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm text-left hover:border-primary/30 transition-all">
+          <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-2">
+            <Briefcase size={16} />
+          </div>
+          <span className="font-medium text-gray-700 text-sm">Próximo Viaje</span>
+        </button>
+        <button className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm text-left hover:border-primary/30 transition-all">
+          <div className="w-8 h-8 rounded-full bg-yellow-50 text-yellow-600 flex items-center justify-center mb-2">
+            <Sun size={16} />
+          </div>
+          <span className="font-medium text-gray-700 text-sm">Reto del Día</span>
+        </button>
       </div>
     </div>
   );
