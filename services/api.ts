@@ -77,7 +77,7 @@ export const api = {
         return data;
     },
 
-    register: async (userData: { email: string; password: string; name: string }) => {
+    register: async (userData: { email: string; password: string; name: string; gender?: 'male' | 'female' | 'other'; birthDate?: string }) => {
         const res = await fetch(`${API_BASE}/auth/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -304,19 +304,29 @@ export const api = {
     },
 
     saveTrip: async (trip: Trip): Promise<Trip> => {
+        const { garments, ...rest } = trip;
+        const payload = {
+            ...rest,
+            garmentIds: garments ? garments.map(g => g.id) : []
+        };
         const res = await fetch(`${API_BASE}/trips`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify(trip)
+            body: JSON.stringify(payload)
         });
         return handleResponse(res);
     },
 
     updateTrip: async (trip: Trip): Promise<Trip> => {
+        const { garments, ...rest } = trip;
+        const payload = {
+            ...rest,
+            garmentIds: garments ? garments.map(g => g.id) : []
+        };
         const res = await fetch(`${API_BASE}/trips/${trip.id}`, {
             method: 'PUT',
             headers: getHeaders(),
-            body: JSON.stringify(trip)
+            body: JSON.stringify(payload)
         });
         return handleResponse(res);
     },

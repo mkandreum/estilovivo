@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, Lock, User, ArrowRight, Sparkles, AlertCircle } from 'lucide-react';
+import { Mail, Lock, User, ArrowRight, Sparkles, AlertCircle, Calendar, Users } from 'lucide-react';
 import { api } from '../services/api';
 
 interface AuthPageProps {
@@ -11,6 +11,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthSuccess }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [name, setName] = useState('');
+    const [gender, setGender] = useState<'male' | 'female' | 'other'>('other');
+    const [birthDate, setBirthDate] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -24,7 +26,13 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthSuccess }) => {
                 const data = await api.login({ email, password });
                 onAuthSuccess(data.user);
             } else {
-                const data = await api.register({ email, password, name });
+                const data = await api.register({ 
+                  email, 
+                  password, 
+                  name,
+                  gender,
+                  birthDate: birthDate || undefined
+                });
                 onAuthSuccess(data.user);
             }
         } catch (err: any) {
@@ -67,20 +75,59 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthSuccess }) => {
 
                     <form onSubmit={handleSubmit} className="space-y-5">
                         {!isLogin && (
-                            <div className="space-y-1">
-                                <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Nombre Completo</label>
-                                <div className="relative group">
-                                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                                    <input
-                                        type="text"
-                                        required
-                                        value={name}
-                                        onChange={(e) => setName(e.target.value)}
-                                        className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium text-gray-800"
-                                        placeholder="Tu nombre"
-                                    />
+                            <>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Nombre Completo</label>
+                                    <div className="relative group">
+                                        <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                                        <input
+                                            type="text"
+                                            required
+                                            value={name}
+                                            onChange={(e) => setName(e.target.value)}
+                                            className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium text-gray-800"
+                                            placeholder="Tu nombre"
+                                        />
+                                    </div>
                                 </div>
-                            </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Fecha de Nacimiento</label>
+                                    <div className="relative group">
+                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                                        <input
+                                            type="date"
+                                            value={birthDate}
+                                            onChange={(e) => setBirthDate(e.target.value)}
+                                            className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium text-gray-800"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Sexo</label>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {[
+                                            { id: 'female' as const, label: 'Mujer' },
+                                            { id: 'male' as const, label: 'Hombre' },
+                                            { id: 'other' as const, label: 'Otro' }
+                                        ].map(option => (
+                                            <button
+                                                key={option.id}
+                                                type="button"
+                                                onClick={() => setGender(option.id)}
+                                                className={`py-3 rounded-xl text-sm font-bold transition-all ${
+                                                    gender === option.id
+                                                        ? 'bg-primary text-white shadow-lg'
+                                                        : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                                                }`}
+                                            >
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
                         )}
 
                         <div className="space-y-1">

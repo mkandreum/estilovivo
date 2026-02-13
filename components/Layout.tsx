@@ -18,11 +18,10 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
   ];
 
   // Calculate index for the sliding animation
-  // Calculate index for the sliding animation
   const activeIndex = useMemo(() => {
     let targetTab = activeTab;
     if (activeTab === 'planner' || activeTab === 'suitcase') {
-      targetTab = 'profile';
+      targetTab = 'wardrobe';
     }
     return navItems.findIndex(item => item.id === targetTab);
   }, [activeTab, navItems]);

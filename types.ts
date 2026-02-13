@@ -65,6 +65,8 @@ export interface UserState {
   avatar?: string;
   followersCount?: number;
   followingCount?: number;
+  gender?: 'male' | 'female' | 'other';
+  birthDate?: string;
 }
 
 export interface MoodOption {
@@ -87,6 +89,7 @@ export interface Trip {
   dateStart: string;
   dateEnd: string;
   items: TripItem[];
+  garments?: Garment[];
 }
 
 export interface CommunityPost {

@@ -10,6 +10,47 @@ import Suitcase from './pages/Suitcase';
 import AuthPage from './pages/AuthPage';
 import { UserState, Garment, Look, PlannerEntry, Trip } from './types';
 import { api } from './services/api';
+import { useLocalStorage, loadFromLocalStorage } from './hooks/useLocalStorage';
+
+// Theme configurations per gender
+const THEMES = {
+  female: {
+    primary: '#ec4899',
+    primaryLight: '#fbcfe8',
+    primaryDark: '#be185d',
+    accent: '#14b8a6',
+    secondary: '#f97316',
+    name: 'Rosa Femenino'
+  },
+  male: {
+    primary: '#1e40af',
+    primaryLight: '#bfdbfe',
+    primaryDark: '#001a4d',
+    accent: '#334155',
+    secondary: '#1f2937',
+    name: 'Azul Masculino'
+  },
+  other: {
+    primary: '#16a34a',
+    primaryLight: '#dcfce7',
+    primaryDark: '#14532d',
+    accent: '#8b5cf6',
+    secondary: '#6366f1',
+    name: 'Verde Neutral'
+  }
+};
+
+const applyTheme = (gender?: string) => {
+  const genderKey = (gender as keyof typeof THEMES) || 'female';
+  const theme = THEMES[genderKey] || THEMES.female;
+  
+  const root = document.documentElement;
+  root.style.setProperty('--color-primary', theme.primary);
+  root.style.setProperty('--color-primary-light', theme.primaryLight);
+  root.style.setProperty('--color-primary-dark', theme.primaryDark);
+  root.style.setProperty('--color-accent', theme.accent);
+  root.style.setProperty('--color-secondary', theme.secondary);
+};
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('home');
@@ -52,10 +93,38 @@ const App: React.FC = () => {
             api.getTrips(),
           ]);
 
-          if (fetchedGarments.status === 'fulfilled') setGarments(fetchedGarments.value);
-          if (fetchedLooks.status === 'fulfilled') setLooks(fetchedLooks.value);
-          if (fetchedPlanner.status === 'fulfilled') setPlanner(fetchedPlanner.value);
-          if (fetchedTrips.status === 'fulfilled') setTrips(fetchedTrips.value);
+          // Use API results if available, fallback to localStorage
+          if (fetchedGarments.status === 'fulfilled') {
+            setGarments(fetchedGarments.value);
+            localStorage.setItem('beyour_garments', JSON.stringify(fetchedGarments.value));
+          } else {
+            const saved = loadFromLocalStorage('beyour_garments', []);
+            setGarments(saved);
+          }
+
+          if (fetchedLooks.status === 'fulfilled') {
+            setLooks(fetchedLooks.value);
+            localStorage.setItem('beyour_looks', JSON.stringify(fetchedLooks.value));
+          } else {
+            const saved = loadFromLocalStorage('beyour_looks', []);
+            setLooks(saved);
+          }
+
+          if (fetchedPlanner.status === 'fulfilled') {
+            setPlanner(fetchedPlanner.value);
+            localStorage.setItem('beyour_planner', JSON.stringify(fetchedPlanner.value));
+          } else {
+            const saved = loadFromLocalStorage('beyour_planner', []);
+            setPlanner(saved);
+          }
+
+          if (fetchedTrips.status === 'fulfilled') {
+            setTrips(fetchedTrips.value);
+            localStorage.setItem('beyour_trips', JSON.stringify(fetchedTrips.value));
+          } else {
+            const saved = loadFromLocalStorage('beyour_trips', []);
+            setTrips(saved);
+          }
         } catch (error) {
           console.error("Critical error during initialization:", error);
           localStorage.removeItem('beyour_token');
@@ -73,6 +142,16 @@ const App: React.FC = () => {
     localStorage.setItem('beyour_user', JSON.stringify(userData));
     window.location.reload();
   };
+
+  // Apply theme when user changes
+  useEffect(() => {
+    if (user?.gender) {
+      applyTheme(user.gender);
+    } else {
+      // Default theme if no user
+      applyTheme('female');
+    }
+  }, [user]);
 
   if (isLoading) {
     return (
@@ -98,6 +177,9 @@ const App: React.FC = () => {
   };
 
   const addGarment = async (garment: Garment, file?: File) => {
+    const newGarments = [garment, ...garments];
+    setGarments(newGarments);
+    localStorage.setItem('beyour_garments', JSON.stringify(newGarments));
     try {
       const saved = await api.addGarment({
         file,
@@ -107,15 +189,16 @@ const App: React.FC = () => {
         season: garment.season,
       });
       setGarments([saved, ...garments]);
+      localStorage.setItem('beyour_garments', JSON.stringify([saved, ...garments]));
     } catch (error) {
       console.error("Error adding garment:", error);
-      // Fallback: add locally
-      setGarments([garment, ...garments]);
     }
   };
 
   const removeGarment = async (id: string) => {
-    setGarments(prev => prev.filter(g => g.id !== id));
+    const filtered = garments.filter(g => g.id !== id);
+    setGarments(filtered);
+    localStorage.setItem('beyour_garments', JSON.stringify(filtered));
     try {
       await api.deleteGarment(id);
     } catch (error) {
@@ -124,7 +207,9 @@ const App: React.FC = () => {
   };
 
   const updateGarment = async (g: Garment) => {
-    setGarments(prev => prev.map(item => item.id === g.id ? g : item));
+    const updated = garments.map(item => item.id === g.id ? g : item);
+    setGarments(updated);
+    localStorage.setItem('beyour_garments', JSON.stringify(updated));
     try {
       await api.updateGarment(g.id, g);
     } catch (error) {
@@ -133,17 +218,25 @@ const App: React.FC = () => {
   };
 
   const saveLook = async (look: Look) => {
+    const newLooks = [look, ...looks];
+    setLooks(newLooks);
+    localStorage.setItem('beyour_looks', JSON.stringify(newLooks));
     try {
       const savedLook = await api.saveLook(look);
-      setLooks([savedLook, ...looks]);
+      const updated = [savedLook, ...looks];
+      setLooks(updated);
+      localStorage.setItem('beyour_looks', JSON.stringify(updated));
       setActiveTab('wardrobe');
     } catch (error) {
       console.error("Error saving look:", error);
+      setActiveTab('wardrobe');
     }
   };
 
   const deleteLook = async (id: string) => {
-    setLooks(prev => prev.filter(l => l.id !== id));
+    const filtered = looks.filter(l => l.id !== id);
+    setLooks(filtered);
+    localStorage.setItem('beyour_looks', JSON.stringify(filtered));
     try {
       await api.deleteLook(id);
     } catch (error) {
@@ -152,16 +245,17 @@ const App: React.FC = () => {
   };
 
   const updatePlannerEntry = async (entry: PlannerEntry) => {
+    const filtered = planner.filter(p => p.date !== entry.date);
+    const updated = [...filtered, entry];
+    setPlanner(updated);
+    localStorage.setItem('beyour_planner', JSON.stringify(updated));
     try {
       const saved = await api.updatePlanner(entry);
-      setPlanner(prev => {
-        const filtered = prev.filter(p => p.date !== entry.date);
-        return [...filtered, saved];
-      });
+      const final = [...planner.filter(p => p.date !== entry.date), saved];
+      setPlanner(final);
+      localStorage.setItem('beyour_planner', JSON.stringify(final));
     } catch (error) {
       console.error("Error updating planner:", error);
-      // Fallback local
-      setPlanner(prev => [...prev.filter(e => e.date !== entry.date), entry]);
     }
   };
 
@@ -228,17 +322,24 @@ const App: React.FC = () => {
         return (
           <Suitcase
             trips={trips}
+            garments={garments}
             onAddTrip={async (newTrip) => {
+              const newTrips = [newTrip, ...trips];
+              setTrips(newTrips);
+              localStorage.setItem('beyour_trips', JSON.stringify(newTrips));
               try {
                 const saved = await api.saveTrip(newTrip);
-                setTrips(prev => [saved, ...prev]);
+                const updated = [saved, ...trips];
+                setTrips(updated);
+                localStorage.setItem('beyour_trips', JSON.stringify(updated));
               } catch (error) {
                 console.error("Error saving trip:", error);
-                setTrips(prev => [newTrip, ...prev]);
               }
             }}
             onDeleteTrip={async (id) => {
-              setTrips(prev => prev.filter(t => t.id !== id));
+              const filtered = trips.filter(t => t.id !== id);
+              setTrips(filtered);
+              localStorage.setItem('beyour_trips', JSON.stringify(filtered));
               try {
                 await api.deleteTrip(id);
               } catch (error) {
@@ -246,7 +347,9 @@ const App: React.FC = () => {
               }
             }}
             onUpdateTrip={async (trip) => {
-              setTrips(prev => prev.map(t => t.id === trip.id ? trip : t));
+              const updated = trips.map(t => t.id === trip.id ? trip : t);
+              setTrips(updated);
+              localStorage.setItem('beyour_trips', JSON.stringify(updated));
               try {
                 await api.updateTrip(trip);
               } catch (error) {

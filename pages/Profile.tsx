@@ -561,6 +561,36 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
               <h3 className="text-sm font-semibold text-gray-700">Preferencias</h3>
             </div>
             <div className="divide-y divide-gray-50">
+              <div className="p-4">
+                <p className="text-sm font-medium mb-3">Sexo</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'female', label: 'Mujer', emoji: '♀️' },
+                    { id: 'male', label: 'Hombre', emoji: '♂️' },
+                    { id: 'other', label: 'Otro', emoji: '✨' }
+                  ].map(option => (
+                    <button
+                      key={option.id}
+                      onClick={async () => {
+                        try {
+                          await api.updateProfile({ gender: option.id as any });
+                          onUpdateUser({ ...user, gender: option.id as any });
+                        } catch (e) {
+                          console.warn('Error saving gender:', e);
+                        }
+                      }}
+                      className={`py-2.5 rounded-lg text-xs font-medium transition ${
+                        user.gender === option.id
+                          ? 'bg-pink-500 text-white shadow-md'
+                          : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                      }`}
+                    >
+                      <span className="text-lg">{option.emoji}</span>
+                      <p className="mt-0.5">{option.label}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-3">
                   <Moon size={18} className="text-indigo-500" />
@@ -571,7 +601,8 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
                 </div>
                 <button
                   onClick={() => handleToggleSetting('cycleTracking', !cycleTracking)}
-                  className={`w-11 h-6 rounded-full transition-colors ${cycleTracking ? 'bg-pink-500' : 'bg-gray-200'}`}
+                  className={`w-11 h-6 rounded-full transition-colors ${cycleTracking ? 'bg-pink-500' : 'bg-gray-200'} ${user.gender === 'male' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={user.gender === 'male'}
                 >
                   <div className={`w-5 h-5 rounded-full bg-white shadow transform transition-transform ${cycleTracking ? 'translate-x-5' : 'translate-x-0.5'}`} />
                 </button>
@@ -581,7 +612,7 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
                   <Music size={18} className="text-green-500" />
                   <div>
                     <p className="text-sm font-medium">Sincronización musical</p>
-                    <p className="text-xs text-gray-400">Conecta músicax con tu mood</p>
+                    <p className="text-xs text-gray-400">Conecta música con tu mood</p>
                   </div>
                 </div>
                 <button

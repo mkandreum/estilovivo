@@ -20,6 +20,8 @@ model User {
   mood              String?
   cycleTracking     Boolean    @default(false)
   musicSync         Boolean    @default(false)
+  gender            String?    @default("other")
+  birthDate         DateTime?
   resetToken        String?
   resetTokenExpiry  DateTime?
   createdAt         DateTime   @default(now())
@@ -59,6 +61,7 @@ model Product {
   images      ProductImage[]
   looks       Look[]
   favorites   Favorite[]
+  tripGarments TripGarment[]
 }
 
 model ProductImage {
@@ -114,13 +117,14 @@ model PlannerEntry {
 }
 
 model Trip {
-  id          String     @id @default(cuid())
+  id          String        @id @default(cuid())
   destination String
   dateStart   String
   dateEnd     String
   userId      String
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   items       TripItem[]
+  garments    TripGarment[]
 }
 
 model TripItem {
@@ -130,6 +134,16 @@ model TripItem {
   isEssential Boolean @default(false)
   tripId      String
   trip        Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+model TripGarment {
+  id        String  @id @default(cuid())
+  tripId    String
+  trip      Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, productId])
 }
 
 model Like {

@@ -14,8 +14,11 @@
                         sans: ['Poppins', 'sans-serif'],
                     },
                     colors: {
-                        primary: '#0F4C5C', // Petrol Blue
-                        accent: '#E36414', // Vibrant Coral
+                        primary: 'var(--color-primary)',
+                        'primary-light': 'var(--color-primary-light)',
+                        'primary-dark': 'var(--color-primary-dark)',
+                        accent: 'var(--color-accent)',
+                        secondary: 'var(--color-secondary)',
                         lavender: {
                             50: '#F5F3FF',
                             100: '#EDE9FE',
@@ -27,6 +30,14 @@
         }
     </script>
     <style>
+        :root {
+            --color-primary: #ec4899;
+            --color-primary-light: #f472b6;
+            --color-primary-dark: #db2777;
+            --color-accent: #14b8a6;
+            --color-secondary: #a78bfa;
+        }
+
         body {
             background-color: #F8F9FA; /* Warm Grey/Off white */
         }

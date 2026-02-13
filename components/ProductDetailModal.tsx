@@ -41,7 +41,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center pointer-events-none">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center pointer-events-none p-4">
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto transition-opacity" 
@@ -49,7 +49,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
       />
 
       {/* Main Modal Card */}
-      <div className="bg-white w-full max-w-md h-[90vh] sm:h-[85vh] rounded-t-3xl sm:rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden pointer-events-auto animate-fade-in-up transform transition-transform">
+      <div className="bg-white w-full max-w-md max-h-[calc(100vh-2rem)] sm:max-h-[90vh] rounded-t-3xl sm:rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden pointer-events-auto animate-fade-in-up transform transition-transform">
         
         {/* Header Actions (Floating) */}
         <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10 bg-gradient-to-b from-black/40 to-transparent">

@@ -76,13 +76,19 @@ app.get('/api/health', (req: Request, res: Response) => {
 
 app.post('/api/auth/register', async (req: Request, res: Response) => {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name, gender, birthDate } = req.body;
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) return res.status(400).json({ error: 'Email already registered' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
-      data: { email, password: hashedPassword, name }
+      data: { 
+        email, 
+        password: hashedPassword, 
+        name,
+        gender: gender || 'female',
+        birthDate: birthDate ? new Date(birthDate) : null
+      }
     });
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
     const { password: _, ...safe } = user;
@@ -166,7 +172,7 @@ app.get('/api/auth/me', authenticateToken, async (req: any, res: Response) => {
 
 app.put('/api/auth/profile', authenticateToken, upload.single('avatar'), async (req: any, res: Response) => {
   try {
-    const { name, bio, mood, cycleTracking, musicSync } = req.body;
+    const { name, bio, mood, cycleTracking, musicSync, gender, birthDate } = req.body;
     const file = req.file as Express.Multer.File | undefined;
 
     const updateData: any = {};
@@ -175,6 +181,8 @@ app.put('/api/auth/profile', authenticateToken, upload.single('avatar'), async (
     if (mood !== undefined) updateData.mood = mood;
     if (cycleTracking !== undefined) updateData.cycleTracking = cycleTracking === 'true' || cycleTracking === true;
     if (musicSync !== undefined) updateData.musicSync = musicSync === 'true' || musicSync === true;
+    if (gender !== undefined) updateData.gender = gender;
+    if (birthDate !== undefined) updateData.birthDate = birthDate ? new Date(birthDate) : null;
     if (file) updateData.avatar = `/api/uploads/${file.filename}`;
 
     const user = await prisma.user.update({
@@ -636,9 +644,15 @@ app.get('/api/trips/:userId', authenticateToken, async (req: any, res: Response)
   try {
     const userId = req.params.userId === 'me' ? req.user.userId : req.params.userId;
     const trips = await prisma.trip.findMany({
-      where: { userId }, include: { items: true }, orderBy: { dateStart: 'asc' }
+      where: { userId },
+      include: { items: true, garments: { include: { product: true } } },
+      orderBy: { dateStart: 'asc' }
     });
-    res.json(trips);
+    const mapped = trips.map(trip => ({
+      ...trip,
+      garments: trip.garments.map(g => g.product)
+    }));
+    res.json(mapped);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error fetching trips' });
@@ -647,15 +661,22 @@ app.get('/api/trips/:userId', authenticateToken, async (req: any, res: Response)
 
 app.post('/api/trips', authenticateToken, async (req: any, res: Response) => {
   try {
-    const { destination, dateStart, dateEnd, items } = req.body;
+    const { destination, dateStart, dateEnd, items, garmentIds } = req.body;
+    const garmentsData = Array.isArray(garmentIds)
+      ? { garments: { create: garmentIds.map((id: string) => ({ productId: id })) } }
+      : {};
     const trip = await prisma.trip.create({
       data: {
         destination, dateStart, dateEnd, userId: req.user.userId,
-        items: { create: items ? items.map((i: any) => ({ label: i.label, checked: i.checked || false, isEssential: i.isEssential || false })) : [] }
+        items: { create: items ? items.map((i: any) => ({ label: i.label, checked: i.checked || false, isEssential: i.isEssential || false })) : [] },
+        ...garmentsData
       },
-      include: { items: true }
+      include: { items: true, garments: { include: { product: true } } }
     });
-    res.status(201).json(trip);
+    res.status(201).json({
+      ...trip,
+      garments: trip.garments.map(g => g.product)
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error creating trip' });
@@ -666,13 +687,27 @@ app.put('/api/trips/:id', authenticateToken, async (req: any, res: Response) => 
   try {
     const existing = await prisma.trip.findUnique({ where: { id: req.params.id } });
     if (!existing || existing.userId !== req.user.userId) return res.status(403).json({ error: 'Not authorized' });
-    const { destination, dateStart, dateEnd } = req.body;
+    const { destination, dateStart, dateEnd, garmentIds } = req.body;
+    const updateData: any = {
+      ...(destination && { destination }),
+      ...(dateStart && { dateStart }),
+      ...(dateEnd && { dateEnd })
+    };
+    if (Array.isArray(garmentIds)) {
+      updateData.garments = {
+        deleteMany: {},
+        create: garmentIds.map((id: string) => ({ productId: id }))
+      };
+    }
     const trip = await prisma.trip.update({
       where: { id: req.params.id },
-      data: { ...(destination && { destination }), ...(dateStart && { dateStart }), ...(dateEnd && { dateEnd }) },
-      include: { items: true }
+      data: updateData,
+      include: { items: true, garments: { include: { product: true } } }
     });
-    res.json(trip);
+    res.json({
+      ...trip,
+      garments: trip.garments.map(g => g.product)
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error updating trip' });
