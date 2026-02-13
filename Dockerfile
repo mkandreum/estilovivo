@@ -41,6 +41,7 @@ COPY types.ts ./
 COPY components ./components
 COPY pages ./pages
 COPY services ./services
+COPY hooks ./hooks
 
 # Build React
 RUN npm run build
