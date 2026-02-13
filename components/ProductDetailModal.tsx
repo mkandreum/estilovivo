@@ -18,9 +18,12 @@ export interface ProductDisplayItem {
 interface ProductDetailModalProps {
   product: ProductDisplayItem;
   onClose: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  onAddToTrip?: () => void;
 }
 
-const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClose }) => {
+const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClose, onEdit, onDelete, onAddToTrip }) => {
   const [showBuyOptions, setShowBuyOptions] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
 
@@ -143,13 +146,49 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
 
         {/* Footer Action */}
         <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 pb-8 sm:pb-4 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-          <button 
-            onClick={() => setShowBuyOptions(true)}
-            className="w-full bg-primary text-white font-bold py-4 rounded-2xl shadow-lg shadow-primary/20 flex items-center justify-center space-x-2 active:scale-[0.98] transition-transform"
-          >
-             <CreditCard size={20} />
-             <span>{product.isOwnItem ? 'Gestionar Venta' : 'Comprar Ahora'}</span>
-          </button>
+          {product.isOwnItem ? (
+            /* Own Item Actions */
+            <div className="space-y-3">
+              <button 
+                onClick={() => {
+                  onAddToTrip?.();
+                  onClose();
+                }}
+                className="w-full bg-primary text-white font-bold py-3 rounded-2xl shadow-lg shadow-primary/20 flex items-center justify-center space-x-2 active:scale-[0.98] transition-transform"
+              >
+                <span>✈️ Añadir a Maleta</span>
+              </button>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => {
+                    onEdit?.();
+                    onClose();
+                  }}
+                  className="flex-1 bg-gray-100 text-gray-700 font-bold py-3 rounded-2xl hover:bg-gray-200 transition-colors active:scale-[0.98]"
+                >
+                  Editar
+                </button>
+                <button 
+                  onClick={() => {
+                    onDelete?.();
+                    onClose();
+                  }}
+                  className="flex-1 bg-red-50 text-red-600 font-bold py-3 rounded-2xl hover:bg-red-100 transition-colors active:scale-[0.98]"
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Shop Item Actions */
+            <button 
+              onClick={() => setShowBuyOptions(true)}
+              className="w-full bg-primary text-white font-bold py-4 rounded-2xl shadow-lg shadow-primary/20 flex items-center justify-center space-x-2 active:scale-[0.98] transition-transform"
+            >
+               <CreditCard size={20} />
+               <span>Comprar Ahora</span>
+            </button>
+          )}
         </div>
 
         {/* --- NESTED MODAL: BUY OPTIONS --- */}

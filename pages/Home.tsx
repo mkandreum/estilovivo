@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { UserState, MoodOption, Look, PlannerEntry, Garment } from '../types';
 import { Sun, Sparkles, Briefcase, ChevronRight, RefreshCcw, Shirt, TrendingUp, AlertTriangle } from 'lucide-react';
 
@@ -11,16 +11,42 @@ interface HomeProps {
   garments: Garment[];
 }
 
-const moods: MoodOption[] = [
-  { id: 'confident', label: 'Segura', emoji: '🦁', colorClass: 'bg-orange-100 text-orange-700 border-orange-200' },
-  { id: 'creative', label: 'Creativa', emoji: '🎨', colorClass: 'bg-purple-100 text-purple-700 border-purple-200' },
-  { id: 'relaxed', label: 'Relajada', emoji: '🧘‍♀️', colorClass: 'bg-teal-100 text-teal-700 border-teal-200' },
-  { id: 'powerful', label: 'Poderosa', emoji: '⚡', colorClass: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
-  { id: 'elegant', label: 'Elegante', emoji: '✨', colorClass: 'bg-pink-100 text-pink-700 border-pink-200' },
-  { id: 'casual', label: 'Casual', emoji: '🌿', colorClass: 'bg-green-100 text-green-700 border-green-200' },
-];
+const getMoods = (gender?: string): MoodOption[] => {
+  const isMale = gender === 'male';
+  
+  return [
+    { id: 'confident', label: isMale ? 'Seguro' : 'Segura', emoji: '🦁', colorClass: 'bg-orange-100 text-orange-700 border-orange-200' },
+    { id: 'creative', label: isMale ? 'Creativo' : 'Creativa', emoji: '🎨', colorClass: 'bg-purple-100 text-purple-700 border-purple-200' },
+    { id: 'relaxed', label: isMale ? 'Relajado' : 'Relajada', emoji: '🧘‍♀️', colorClass: 'bg-teal-100 text-teal-700 border-teal-200' },
+    { id: 'powerful', label: isMale ? 'Poderoso' : 'Poderosa', emoji: '⚡', colorClass: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+    { id: 'elegant', label: 'Elegante', emoji: '✨', colorClass: 'bg-pink-100 text-pink-700 border-pink-200' },
+    { id: 'casual', label: 'Casual', emoji: '🌿', colorClass: 'bg-green-100 text-green-700 border-green-200' },
+  ];
+};
 
 const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate, plannerEntries, looks, garments }) => {
+  const moods = getMoods(user?.gender);
+  const [showNotification, setShowNotification] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState('');
+
+  // Auto-hide notification
+  useEffect(() => {
+    if (showNotification) {
+      const timer = setTimeout(() => setShowNotification(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showNotification]);
+
+  // Listen for theme changes from Profile
+  useEffect(() => {
+    const handleThemeChange = (event: any) => {
+      setNotificationMessage(event.detail.message);
+      setShowNotification(true);
+    };
+    window.addEventListener('themeChanged', handleThemeChange);
+    return () => window.removeEventListener('themeChanged', handleThemeChange);
+  }, []);
+
   // Real stats
   const mostUsedGarment = useMemo(
     () => [...garments].sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0))[0],
@@ -73,6 +99,15 @@ const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate, plannerEntr
 
   return (
     <div className="p-6 space-y-8 animate-fade-in pb-28">
+      {/* Notification Banner */}
+      {showNotification && (
+        <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center pointer-events-none animate-fadeIn pt-4">
+          <div className="bg-primary text-white px-6 py-3 rounded-2xl shadow-lg backdrop-blur-sm pointer-events-auto max-w-xs">
+            <p className="text-sm font-medium text-center">{notificationMessage}</p>
+          </div>
+        </div>
+      )}
+
       {/* Header & Welcome */}
       <header className="space-y-2 mt-4">
         <h1 className="text-3xl font-bold text-gray-800 tracking-tight">

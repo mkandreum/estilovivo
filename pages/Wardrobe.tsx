@@ -79,6 +79,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
 
   // Detail Modal
   const [detailItem, setDetailItem] = useState<ProductDisplayItem | null>(null);
+  const [selectedGarmentForDetail, setSelectedGarmentForDetail] = useState<Garment | null>(null);
 
   // Filtered & searched items
   const filteredItems = useMemo(() => {
@@ -180,6 +181,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
   };
 
   const openDetailModal = (item: Garment) => {
+    setSelectedGarmentForDetail(item);
     setDetailItem({
       id: item.id,
       title: item.name || item.type,
@@ -217,7 +219,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Buscar prenda, color, marca..."
-                className="flex-1 bg-gray-50 rounded-full px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-pink-300"
+                className="flex-1 bg-gray-50 rounded-full px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
               />
               {searchQuery && (
                 <button onClick={() => setSearchQuery('')}>
@@ -240,7 +242,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                     onClick={() => setFilterPanelOpen(!filterPanelOpen)}
                     className={`p-2 rounded-full border transition ${
                       filterPanelOpen || seasonFilter !== 'all' || sortBy !== 'recent'
-                        ? 'bg-pink-50 border-pink-200 text-pink-500'
+                        ? 'bg-primary/10 border-primary/20 text-primary'
                         : 'bg-gray-50 border-gray-100 text-gray-600 hover:bg-gray-100'
                     }`}
                   >
@@ -286,7 +288,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
             <h3 className="text-sm font-semibold">Filtros avanzados</h3>
             <button
               onClick={() => { setSeasonFilter('all'); setSortBy('recent'); setFilterPanelOpen(false); }}
-              className="text-xs text-pink-500 font-medium"
+              className="text-xs text-primary font-medium"
             >
               Limpiar
             </button>
@@ -300,7 +302,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                   onClick={() => setSeasonFilter(s.id)}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
                     seasonFilter === s.id
-                      ? 'bg-pink-500 text-white'
+                      ? 'bg-primary text-white'
                       : 'bg-gray-100 text-gray-500'
                   }`}
                 >
@@ -322,7 +324,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                   onClick={() => setSortBy(s.id)}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
                     sortBy === s.id
-                      ? 'bg-pink-500 text-white'
+                      ? 'bg-primary text-white'
                       : 'bg-gray-100 text-gray-500'
                   }`}
                 >
@@ -373,7 +375,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                   <p className="text-gray-400 text-sm">Sin resultados para "{searchQuery}"</p>
                   <button
                     onClick={() => setSearchQuery('')}
-                    className="mt-3 text-pink-500 text-sm font-medium"
+                    className="mt-3 text-primary text-sm font-medium"
                   >
                     Limpiar búsqueda
                   </button>
@@ -392,7 +394,8 @@ const Wardrobe: React.FC<WardrobeProps> = ({
             {filteredItems.map((garment) => (
               <div
                 key={garment.id}
-                className="group relative bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
+                onClick={() => openDetailModal(garment)}
+                className="group relative bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-pointer"
               >
                 <div className="aspect-[3/4] overflow-hidden bg-gray-50 relative">
                   <img
@@ -518,17 +521,18 @@ const Wardrobe: React.FC<WardrobeProps> = ({
 
       {/* ADD GARMENT MODAL */}
       {isAdding && (
-        <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md p-6 rounded-3xl shadow-2xl animate-fade-in-up max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl animate-fade-in-up flex flex-col max-h-[90vh] sm:max-h-auto">
+            <div className="flex justify-between items-center mb-6 p-6 border-b border-gray-100 flex-shrink-0">
               <h2 className="text-xl font-bold text-gray-800">Nueva Prenda</h2>
               <button onClick={resetAddModal}>
                 <X size={24} className="text-gray-400" />
               </button>
             </div>
 
+            <div className="overflow-y-auto flex-1 px-6 space-y-4">
             {/* Image Upload */}
-            <div className="mb-5">
+            <div>
               {!newImage ? (
                 <label className="w-full aspect-[4/3] bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
                   <Camera size={40} className="text-gray-300 mb-2" />
@@ -550,18 +554,18 @@ const Wardrobe: React.FC<WardrobeProps> = ({
             </div>
 
             {/* Name */}
-            <div className="mb-4">
+            <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1.5">Nombre</label>
               <input
                 value={newName}
                 onChange={e => setNewName(e.target.value)}
                 placeholder="Ej: Camiseta rayas azul"
-                className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-pink-300"
+                className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
               />
             </div>
 
             {/* Category */}
-            <div className="mb-4">
+            <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1.5">Categoría</label>
               <div className="flex gap-2 flex-wrap">
                 {CATEGORIES.filter(c => c.id !== 'all').map(cat => (
@@ -570,7 +574,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                     onClick={() => setNewCategory(cat.id)}
                     className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
                       newCategory === cat.id
-                        ? 'bg-pink-500 text-white'
+                        ? 'bg-primary text-white'
                         : 'bg-gray-100 text-gray-500'
                     }`}
                   >
@@ -581,14 +585,14 @@ const Wardrobe: React.FC<WardrobeProps> = ({
             </div>
 
             {/* Color & Brand */}
-            <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1.5">Color</label>
                 <input
                   value={newColor}
                   onChange={e => setNewColor(e.target.value)}
                   placeholder="Ej: azul"
-                  className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-pink-300"
+                  className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </div>
               <div>
@@ -597,13 +601,13 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                   value={newBrand}
                   onChange={e => setNewBrand(e.target.value)}
                   placeholder="Opcional"
-                  className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-pink-300"
+                  className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </div>
             </div>
 
             {/* Season */}
-            <div className="mb-6">
+            <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1.5">Temporada</label>
               <div className="flex gap-2 flex-wrap">
                 {SEASONS.map(s => (
@@ -612,7 +616,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                     onClick={() => setNewSeason(s.id as any)}
                     className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
                       newSeason === s.id
-                        ? 'bg-pink-500 text-white'
+                        ? 'bg-primary text-white'
                         : 'bg-gray-100 text-gray-500'
                     }`}
                   >
@@ -621,11 +625,12 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                 ))}
               </div>
             </div>
+            </div>
 
             <button
               disabled={!newImage}
               onClick={confirmAdd}
-              className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl transition-colors"
+              className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl transition-colors flex-shrink-0 m-6 mt-0"
             >
               Añadir al Armario
             </button>
@@ -696,7 +701,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                         type="number"
                         value={salePrice}
                         onChange={e => setSalePrice(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3 bg-gray-50 rounded-xl text-lg font-bold outline-none focus:ring-2 focus:ring-pink-300"
+                        className="w-full pl-11 pr-4 py-3 bg-gray-50 rounded-xl text-lg font-bold outline-none focus:ring-2 focus:ring-primary/30"
                         placeholder="0.00"
                       />
                     </div>
@@ -708,7 +713,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                     <input
                       value={saleSize}
                       onChange={e => setSaleSize(e.target.value)}
-                      className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-pink-300"
+                      className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
                       placeholder="Ej: M, 38, 40..."
                     />
                   </div>
@@ -739,7 +744,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                     <textarea
                       value={saleDescription}
                       onChange={e => setSaleDescription(e.target.value)}
-                      className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-pink-300 resize-none"
+                      className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/30 resize-none"
                       rows={3}
                       placeholder="Describe la prenda..."
                     />
@@ -770,7 +775,28 @@ const Wardrobe: React.FC<WardrobeProps> = ({
       {detailItem && (
         <ProductDetailModal
           product={detailItem}
-          onClose={() => setDetailItem(null)}
+          onClose={() => {
+            setDetailItem(null);
+            setSelectedGarmentForDetail(null);
+          }}
+          onEdit={() => {
+            if (selectedGarmentForDetail) {
+              setIsAdding(true);
+              // Populate form with garment data
+              setNewName(selectedGarmentForDetail.name || '');
+              setNewCategory(selectedGarmentForDetail.type as any);
+              setNewColor(selectedGarmentForDetail.color);
+              setNewBrand(selectedGarmentForDetail.brand || '');
+              setNewSeason((selectedGarmentForDetail.season || 'all') as any);
+              setNewImage(selectedGarmentForDetail.imageUrl);
+            }
+          }}
+          onDelete={() => {
+            if (selectedGarmentForDetail) {
+              onRemoveGarment(selectedGarmentForDetail.id);
+            }
+          }}
+          onAddToTrip={() => onNavigate('suitcase')}
         />
       )}
     </div>

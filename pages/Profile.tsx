@@ -170,7 +170,7 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
   return (
     <div className="max-w-md mx-auto pb-6">
       {/* Header */}
-      <div className="bg-gradient-to-br from-pink-500 via-rose-400 to-orange-300 rounded-b-3xl p-6 pb-20 relative">
+      <div className="bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-accent)] rounded-b-3xl p-6 pb-20 relative transition-all duration-500">
         <div className="flex justify-between items-start">
           <h1 className="text-white text-xl font-bold">Mi Perfil</h1>
           <div className="flex gap-2">
@@ -575,6 +575,15 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
                         try {
                           const updated = await api.updateProfile({ gender: option.id as any });
                           onUpdateUser(updated);
+                          // Send notification to Home page
+                          const themeNames: Record<string, string> = {
+                            female: 'Rosa Femenino',
+                            male: 'Azul Masculino',
+                            other: 'Verde Otro'
+                          };
+                          window.dispatchEvent(new CustomEvent('themeChanged', {
+                            detail: { message: `Tema actualizado a ${themeNames[option.id]}` }
+                          }));
                         } catch (e) {
                           console.warn('Error saving gender:', e);
                           onUpdateUser({ ...user, gender: option.id as any });
@@ -602,7 +611,7 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
                 </div>
                 <button
                   onClick={() => handleToggleSetting('cycleTracking', !cycleTracking)}
-                  className={`w-11 h-6 rounded-full transition-colors ${cycleTracking ? 'bg-pink-500' : 'bg-gray-200'} ${user.gender === 'male' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className={`w-11 h-6 rounded-full transition-colors ${cycleTracking ? 'bg-primary' : 'bg-gray-200'} ${user.gender === 'male' ? 'opacity-50 cursor-not-allowed' : ''}`}
                   disabled={user.gender === 'male'}
                 >
                   <div className={`w-5 h-5 rounded-full bg-white shadow transform transition-transform ${cycleTracking ? 'translate-x-5' : 'translate-x-0.5'}`} />
