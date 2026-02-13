@@ -44,7 +44,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center pointer-events-none p-4">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center pointer-events-none p-4">
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto transition-opacity" 

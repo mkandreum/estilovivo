@@ -270,7 +270,7 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
                 <button
                     disabled={!newTripForm.destination}
                     onClick={handleCreateTrip}
-                    className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl shadow-lg mt-6 transition-colors flex-shrink-0"
+                    className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl shadow-lg mt-6 mb-20 transition-colors flex-shrink-0"
                 >
                     Crear Maleta
                 </button>
@@ -280,8 +280,8 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
 
     // --- RENDER VIEW: TRIP DETAILS ---
     return (
-        <div className={`h-full flex flex-col ${isEmbedded ? 'px-6 bg-transparent' : 'p-6 pb-24 bg-blue-50/50'}`}>
-            <header className={`flex justify-between items-end mb-6 ${isEmbedded ? 'mt-2' : 'mt-4'}`}>
+        <div className={`h-full flex flex-col ${isEmbedded ? 'px-6 bg-transparent' : 'p-6 bg-blue-50/50'}`}>
+            <header className={`flex justify-between items-end mb-6 flex-shrink-0 ${isEmbedded ? 'mt-2' : 'mt-4'}`}>
                 <div className="flex items-center">
                     <button onClick={() => setActiveTripId(null)} className="mr-3 bg-white p-1.5 rounded-full text-gray-500 shadow-sm border border-gray-100">
                         <ArrowLeft size={20} />
@@ -294,8 +294,8 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
             </header>
 
             {activeTrip && (
-                <>
-                    <div className="bg-white rounded-3xl p-6 shadow-xl shadow-blue-900/5 relative overflow-hidden mb-6 transition-all border border-blue-50 flex-shrink-0">
+                <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
+                    <div className="bg-white rounded-3xl p-6 shadow-xl shadow-blue-900/5 relative overflow-hidden mb-6 transition-all border border-blue-50">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-50 rounded-full -mr-8 -mt-8" />
                         <div className="relative z-10">
                             <div className="flex justify-between items-start mb-6">
@@ -324,8 +324,8 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex-1 overflow-hidden flex flex-col">
-                        <div className="flex justify-between items-center mb-4 flex-shrink-0">
+                    <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+                        <div className="flex justify-between items-center mb-4">
                             <h3 className="font-bold text-gray-800 flex items-center">
                                 <CheckSquare size={18} className="mr-2 text-primary" />
                                 Esenciales
@@ -339,7 +339,7 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
                         </div>
 
                         {isAddingItem && (
-                            <div className="flex mb-4 gap-2 flex-shrink-0">
+                            <div className="flex mb-4 gap-2">
                                 <input
                                     autoFocus
                                     type="text"
@@ -353,7 +353,7 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
                             </div>
                         )}
 
-                        <div className="overflow-y-auto no-scrollbar pr-1">
+                        <div className="pr-1">
                             <ul className="space-y-3">
                                 {activeTrip.items.map((item) => (
                                     <li key={item.id} className="flex items-center group cursor-pointer" onClick={() => toggleCheck(item.id)}>
@@ -425,7 +425,7 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
                             </div>
                         )}
                     </div>
-                </>
+                </div>
             )}
         </div>
     );

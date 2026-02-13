@@ -521,7 +521,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
 
       {/* ADD GARMENT MODAL */}
       {isAdding && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl animate-fade-in-up flex flex-col max-h-[90vh] sm:max-h-auto">
             <div className="flex justify-between items-center mb-6 p-6 border-b border-gray-100 flex-shrink-0">
               <h2 className="text-xl font-bold text-gray-800">Nueva Prenda</h2>
@@ -627,20 +627,22 @@ const Wardrobe: React.FC<WardrobeProps> = ({
             </div>
             </div>
 
+            <div className="p-6 pt-4 flex-shrink-0">
             <button
               disabled={!newImage}
               onClick={confirmAdd}
-              className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl transition-colors flex-shrink-0 m-6 mt-0"
+              className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl transition-colors"
             >
               Añadir al Armario
             </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* SELL MODAL */}
       {isSelling && (
-        <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center">
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center">
           <div className="bg-white w-full max-w-md h-[85vh] rounded-t-3xl sm:rounded-3xl shadow-2xl animate-fade-in-up flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-800">

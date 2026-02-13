@@ -205,7 +205,7 @@ const Planner: React.FC<PlannerProps> = ({ looks, plannerEntries, onUpdateEntry 
 
             {/* Selection Modal */}
             {selectedDate && (
-                <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center">
+                <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center">
                     <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl animate-fade-in-up h-[70vh] flex flex-col">
                         <div className="flex justify-between items-center mb-6">
                             <div>
