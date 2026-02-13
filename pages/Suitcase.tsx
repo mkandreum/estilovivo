@@ -207,7 +207,7 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
     // --- RENDER VIEW: CREATE TRIP ---
     if (isCreating) {
         return (
-            <div className={`h-full flex flex-col ${isEmbedded ? 'px-6' : 'p-6 bg-white'}`}>
+            <div className={`h-full flex flex-col ${isEmbedded ? 'px-6' : 'p-6 pb-24 bg-white'}`}>
                 <div className="flex items-center mb-6 mt-4">
                     <button onClick={() => setIsCreating(false)} className="mr-4 text-gray-500 hover:bg-gray-100 p-1 rounded-full">
                         <ArrowLeft size={24} />
@@ -215,7 +215,7 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
                     <h1 className="text-xl font-bold text-gray-800">Nuevo Viaje</h1>
                 </div>
 
-                <div className="space-y-6">
+                <div className="space-y-4 overflow-y-auto no-scrollbar flex-1">
                     <div>
                         <label className="block text-sm font-bold text-gray-700 mb-2">Destino</label>
                         <input
@@ -265,14 +265,15 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
                         )}
                     </div>
 
-                    <button
-                        disabled={!newTripForm.destination}
-                        onClick={handleCreateTrip}
-                        className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl shadow-lg mt-8 transition-colors"
-                    >
-                        Crear Maleta
-                    </button>
                 </div>
+
+                <button
+                    disabled={!newTripForm.destination}
+                    onClick={handleCreateTrip}
+                    className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl shadow-lg mt-6 transition-colors flex-shrink-0"
+                >
+                    Crear Maleta
+                </button>
             </div>
         );
     }

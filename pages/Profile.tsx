@@ -573,15 +573,16 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
                       key={option.id}
                       onClick={async () => {
                         try {
-                          await api.updateProfile({ gender: option.id as any });
-                          onUpdateUser({ ...user, gender: option.id as any });
+                          const updated = await api.updateProfile({ gender: option.id as any });
+                          onUpdateUser(updated);
                         } catch (e) {
                           console.warn('Error saving gender:', e);
+                          onUpdateUser({ ...user, gender: option.id as any });
                         }
                       }}
                       className={`py-2.5 rounded-lg text-xs font-medium transition ${
                         user.gender === option.id
-                          ? 'bg-pink-500 text-white shadow-md'
+                          ? 'bg-primary text-white shadow-md'
                           : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
                       }`}
                     >
