@@ -11,6 +11,7 @@ export interface ProductDisplayItem {
   description?: string;
   brand?: string;
   size?: string;
+  condition?: string;
   isOwnItem?: boolean;
 }
 
@@ -23,12 +24,8 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
   const [showBuyOptions, setShowBuyOptions] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
 
-  // Mock gallery images based on the main image
-  const galleryImages = [
-    product.image,
-    `https://picsum.photos/seed/${product.id}-2/200/200`,
-    `https://picsum.photos/seed/${product.id}-3/200/200`,
-  ];
+  // Gallery uses the product's main image only (no mock images)
+  const galleryImages = [product.image];
 
   const handleShare = () => {
     // Demo share logic
@@ -131,9 +128,15 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
 
             {/* Tags/Attributes */}
             <div className="mt-4 flex flex-wrap gap-2">
-               <span className="px-3 py-1 bg-gray-100 rounded-full text-xs text-gray-600 font-medium">Estado: Muy bueno</span>
-               <span className="px-3 py-1 bg-gray-100 rounded-full text-xs text-gray-600 font-medium">Material: Algodón</span>
-               <span className="px-3 py-1 bg-gray-100 rounded-full text-xs text-gray-600 font-medium">Envío rápido</span>
+               {product.condition && (
+                 <span className="px-3 py-1 bg-gray-100 rounded-full text-xs text-gray-600 font-medium capitalize">Estado: {product.condition}</span>
+               )}
+               {product.brand && (
+                 <span className="px-3 py-1 bg-gray-100 rounded-full text-xs text-gray-600 font-medium">{product.brand}</span>
+               )}
+               {product.size && (
+                 <span className="px-3 py-1 bg-gray-100 rounded-full text-xs text-gray-600 font-medium">Talla: {product.size}</span>
+               )}
             </div>
           </div>
         </div>

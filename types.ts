@@ -1,6 +1,7 @@
 export interface Garment {
   id: string;
   imageUrl: string;
+  name: string;
   type: string;
   color: string;
   season: 'summer' | 'winter' | 'all' | 'transition';
@@ -8,21 +9,47 @@ export interface Garment {
   lastWorn?: string;
   forSale?: boolean;
   price?: number;
+  brand?: string;
+  size?: string;
+  condition?: string;
+  description?: string;
+  userId?: string;
+  userName?: string;
+  userAvatar?: string;
 }
 
 export interface Look {
   id: string;
   name: string;
-  garmentIds: string[]; // IDs of garments in this look
+  garmentIds: string[];
+  garments?: Garment[];
   tags: string[];
   mood?: string;
   createdAt: string;
   isPublic?: boolean;
+  imageUrl?: string;
+  userId?: string;
+  userName?: string;
+  userAvatar?: string;
+  likesCount?: number;
+  commentsCount?: number;
+  isLiked?: boolean;
+  isFavorited?: boolean;
+}
+
+export interface Comment {
+  id: string;
+  content: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  createdAt: string;
 }
 
 export interface PlannerEntry {
   date: string; // "YYYY-MM-DD"
   lookId: string | null;
+  look?: Look;
   eventId?: string;
   eventNote?: string;
 }
@@ -36,6 +63,8 @@ export interface UserState {
   musicSync: boolean;
   bio: string;
   avatar?: string;
+  followersCount?: number;
+  followingCount?: number;
 }
 
 export interface MoodOption {
@@ -58,4 +87,32 @@ export interface Trip {
   dateStart: string;
   dateEnd: string;
   items: TripItem[];
+}
+
+export interface CommunityPost {
+  id: string;
+  user: string;
+  userId: string;
+  avatar: string;
+  image: string;
+  mood: string;
+  desc: string;
+  likes: number;
+  comments: number;
+  isLiked: boolean;
+  isFavorited: boolean;
+  createdAt: string;
+}
+
+export interface ShopItem {
+  id: string;
+  user: string;
+  userId: string;
+  avatar: string;
+  image: string;
+  title: string;
+  price: number;
+  size: string;
+  brand: string;
+  condition: string;
 }

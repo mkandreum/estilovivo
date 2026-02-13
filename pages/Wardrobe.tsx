@@ -1,422 +1,780 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Garment, Look, PlannerEntry } from '../types';
-import { Filter, Plus, Search, Trash2, X, Camera, Tag, DollarSign, ShoppingBag, ChevronRight } from 'lucide-react';
-import Suitcase from './Suitcase';
+import {
+  Filter, Plus, Search, Trash2, X, Camera, Tag, DollarSign,
+  ShoppingBag, ChevronRight, Shirt, SlidersHorizontal, ArrowLeft
+} from 'lucide-react';
 import ProductDetailModal, { ProductDisplayItem } from '../components/ProductDetailModal';
 
 interface WardrobeProps {
-    garments: Garment[];
-    onAddGarment: (g: Garment) => void;
-    onRemoveGarment: (id: string) => void;
-    onUpdateGarment: (g: Garment) => void;
-    looks: Look[];
-    planner: PlannerEntry[];
-    onUpdatePlanner: (e: PlannerEntry) => void;
-    onNavigate: (tab: string) => void;
+  garments: Garment[];
+  onAddGarment: (g: Garment, file?: File) => void;
+  onRemoveGarment: (id: string) => void;
+  onUpdateGarment: (g: Garment) => void;
+  looks: Look[];
+  planner: PlannerEntry[];
+  onUpdatePlanner: (e: PlannerEntry) => void;
+  onNavigate: (tab: string) => void;
 }
 
-type ViewType = 'closet' | 'suitcase' | 'sales';
+type ViewType = 'closet' | 'sales';
+
+const CATEGORIES = [
+  { id: 'all', label: 'Todo' },
+  { id: 'top', label: 'Tops' },
+  { id: 'bottom', label: 'Bottoms' },
+  { id: 'shoes', label: 'Zapatos' },
+  { id: 'outerwear', label: 'Abrigos' },
+  { id: 'accessories', label: 'Accesorios' },
+  { id: 'dress', label: 'Vestidos' },
+];
+
+const SEASONS = [
+  { id: 'all', label: 'Todo el año' },
+  { id: 'summer', label: 'Verano' },
+  { id: 'winter', label: 'Invierno' },
+  { id: 'transition', label: 'Entretiempo' },
+];
 
 const Wardrobe: React.FC<WardrobeProps> = ({
-    garments,
-    onAddGarment,
-    onRemoveGarment,
-    onUpdateGarment,
-    looks,
-    planner,
-    onUpdatePlanner,
-    onNavigate
+  garments,
+  onAddGarment,
+  onRemoveGarment,
+  onUpdateGarment,
+  looks,
+  planner,
+  onUpdatePlanner,
+  onNavigate,
 }) => {
-    const [activeView, setActiveView] = useState<ViewType>('closet');
-    const [filter, setFilter] = useState<'all' | 'top' | 'bottom' | 'shoes' | 'outerwear'>('all');
+  const [activeView, setActiveView] = useState<ViewType>('closet');
+  const [filter, setFilter] = useState('all');
 
-    // State for Add Modal
-    const [isAdding, setIsAdding] = useState(false);
-    const [newImage, setNewImage] = useState<string | null>(null);
+  // Search
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
 
-    // State for Sell Flow
-    const [isSelling, setIsSelling] = useState(false);
-    const [selectedForSale, setSelectedForSale] = useState<Garment | null>(null);
-    const [salePrice, setSalePrice] = useState('');
+  // Filter panel
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [seasonFilter, setSeasonFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<'recent' | 'most-used' | 'least-used'>('recent');
 
-    // State for Product Detail Modal
-    const [detailItem, setDetailItem] = useState<ProductDisplayItem | null>(null);
+  // Add Modal
+  const [isAdding, setIsAdding] = useState(false);
+  const [newImage, setNewImage] = useState<string | null>(null);
+  const [newFile, setNewFile] = useState<File | null>(null);
+  const [newName, setNewName] = useState('');
+  const [newCategory, setNewCategory] = useState('top');
+  const [newColor, setNewColor] = useState('');
+  const [newSeason, setNewSeason] = useState<'all' | 'summer' | 'winter' | 'transition'>('all');
+  const [newBrand, setNewBrand] = useState('');
 
-    // Filter logic
-    const filteredItems = filter === 'all'
-        ? garments
-        : garments.filter(g => g.type === filter);
+  // Sell Flow
+  const [isSelling, setIsSelling] = useState(false);
+  const [selectedForSale, setSelectedForSale] = useState<Garment | null>(null);
+  const [salePrice, setSalePrice] = useState('');
+  const [saleDescription, setSaleDescription] = useState('');
+  const [saleCondition, setSaleCondition] = useState('bueno');
+  const [saleSize, setSaleSize] = useState('');
 
-    // Items currently on sale
-    const salesItems = garments.filter(g => g.forSale);
-    const totalSalesValue = salesItems.reduce((acc, curr) => acc + (curr.price || 0), 0);
+  // Detail Modal
+  const [detailItem, setDetailItem] = useState<ProductDisplayItem | null>(null);
 
-    // --- Handlers ---
+  // Filtered & searched items
+  const filteredItems = useMemo(() => {
+    let items = [...garments];
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setNewImage(reader.result as string);
-            };
-            reader.readAsDataURL(file);
-        }
+    // Category filter
+    if (filter !== 'all') items = items.filter(g => g.type === filter);
+
+    // Season filter
+    if (seasonFilter !== 'all') items = items.filter(g => g.season === seasonFilter);
+
+    // Search
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      items = items.filter(g =>
+        (g.name || '').toLowerCase().includes(q) ||
+        g.type.toLowerCase().includes(q) ||
+        g.color.toLowerCase().includes(q) ||
+        (g.brand || '').toLowerCase().includes(q)
+      );
+    }
+
+    // Sort
+    if (sortBy === 'most-used') items.sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0));
+    else if (sortBy === 'least-used') items.sort((a, b) => (a.usageCount || 0) - (b.usageCount || 0));
+
+    return items;
+  }, [garments, filter, seasonFilter, searchQuery, sortBy]);
+
+  // Sales items
+  const salesItems = garments.filter(g => g.forSale);
+  const totalSalesValue = salesItems.reduce((acc, curr) => acc + (curr.price || 0), 0);
+
+  // Handlers
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setNewFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setNewImage(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const confirmAdd = () => {
+    if (!newImage) return;
+    const garment: Garment = {
+      id: `g-${Date.now()}`,
+      imageUrl: newImage,
+      name: newName || newCategory,
+      type: newCategory,
+      color: newColor || 'sin color',
+      season: newSeason,
+      usageCount: 0,
+      forSale: false,
+      brand: newBrand || undefined,
     };
+    onAddGarment(garment, newFile || undefined);
+    resetAddModal();
+  };
 
-    const confirmAdd = () => {
-        if (!newImage) return;
-        const newGarment: Garment = {
-            id: `g-${Date.now()}`,
-            imageUrl: newImage,
-            type: filter === 'all' ? 'top' : filter,
-            color: 'new',
-            season: 'all',
-            usageCount: 0,
-            forSale: false
-        };
-        onAddGarment(newGarment);
-        setIsAdding(false);
-        setNewImage(null);
-    };
+  const resetAddModal = () => {
+    setIsAdding(false);
+    setNewImage(null);
+    setNewFile(null);
+    setNewName('');
+    setNewCategory('top');
+    setNewColor('');
+    setNewSeason('all');
+    setNewBrand('');
+  };
 
-    const startSelling = () => {
-        setIsSelling(true);
-        setSelectedForSale(null);
-        setSalePrice('');
-    };
+  const confirmSale = () => {
+    if (selectedForSale && salePrice) {
+      onUpdateGarment({
+        ...selectedForSale,
+        forSale: true,
+        price: parseFloat(salePrice),
+        description: saleDescription || undefined,
+        condition: saleCondition,
+        size: saleSize || undefined,
+      });
+      setIsSelling(false);
+      setSelectedForSale(null);
+      setSalePrice('');
+      setSaleDescription('');
+      setSaleCondition('bueno');
+      setSaleSize('');
+      setActiveView('sales');
+    }
+  };
 
-    const handleSelectForSale = (garment: Garment) => {
-        setSelectedForSale(garment);
-    };
+  const cancelSale = (item: Garment) => {
+    onUpdateGarment({
+      ...item,
+      forSale: false,
+      price: undefined,
+    });
+  };
 
-    const confirmSale = () => {
-        if (selectedForSale && salePrice) {
-            onUpdateGarment({
-                ...selectedForSale,
-                forSale: true,
-                price: parseFloat(salePrice)
-            });
-            setIsSelling(false);
-            setSelectedForSale(null);
-            setSalePrice('');
-            setActiveView('sales');
-        }
-    };
+  const openDetailModal = (item: Garment) => {
+    setDetailItem({
+      id: item.id,
+      title: item.name || item.type,
+      price: item.price || 0,
+      image: item.imageUrl,
+      user: "Tú",
+      avatar: "",
+      description: item.description || `${item.type} - ${item.color}`,
+      isOwnItem: true,
+    });
+  };
 
-    const openDetailModal = (item: Garment) => {
-        setDetailItem({
-            id: item.id,
-            title: item.type,
-            price: item.price || 0,
-            image: item.imageUrl,
-            user: "Tú",
-            avatar: "https://ui-avatars.com/api/?name=You&background=0F4C5C&color=fff",
-            description: "Esta prenda es de tu armario personal.",
-            isOwnItem: true
-        });
-    };
+  const toggleSearch = () => {
+    if (searchOpen) {
+      setSearchQuery('');
+      setSearchOpen(false);
+    } else {
+      setSearchOpen(true);
+      setTimeout(() => searchRef.current?.focus(), 100);
+    }
+  };
 
-    return (
-        <div className="h-full flex flex-col relative bg-gray-50">
-
-            {/* Top Section */}
-            <div className="bg-white pb-2 pt-6 sticky top-0 z-20 shadow-sm rounded-b-3xl mb-4">
-                <div className="flex justify-between items-center px-6 mb-4">
-                    <h1 className="text-2xl font-bold text-gray-800">Mi Espacio</h1>
-                    {activeView === 'closet' && (
-                        <div className="flex space-x-2">
-                            <button className="p-2 bg-gray-50 rounded-full border border-gray-100 text-gray-600">
-                                <Search size={20} />
-                            </button>
-                            <button className="p-2 bg-gray-50 rounded-full border border-gray-100 text-gray-600">
-                                <Filter size={20} />
-                            </button>
-                        </div>
-                    )}
+  return (
+    <div className="h-full flex flex-col relative bg-gray-50">
+      {/* Top Section */}
+      <div className="bg-white pb-2 pt-6 sticky top-0 z-20 shadow-sm rounded-b-3xl mb-4">
+        <div className="flex justify-between items-center px-6 mb-4">
+          {searchOpen ? (
+            <div className="flex-1 flex items-center gap-2">
+              <button onClick={toggleSearch}>
+                <ArrowLeft size={20} className="text-gray-500" />
+              </button>
+              <input
+                ref={searchRef}
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Buscar prenda, color, marca..."
+                className="flex-1 bg-gray-50 rounded-full px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-pink-300"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')}>
+                  <X size={18} className="text-gray-400" />
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold text-gray-800">Mi Espacio</h1>
+              {activeView === 'closet' && (
+                <div className="flex space-x-2">
+                  <button
+                    onClick={toggleSearch}
+                    className="p-2 bg-gray-50 rounded-full border border-gray-100 text-gray-600 hover:bg-gray-100 transition"
+                  >
+                    <Search size={20} />
+                  </button>
+                  <button
+                    onClick={() => setFilterPanelOpen(!filterPanelOpen)}
+                    className={`p-2 rounded-full border transition ${
+                      filterPanelOpen || seasonFilter !== 'all' || sortBy !== 'recent'
+                        ? 'bg-pink-50 border-pink-200 text-pink-500'
+                        : 'bg-gray-50 border-gray-100 text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <SlidersHorizontal size={20} />
+                  </button>
                 </div>
+              )}
+            </>
+          )}
+        </div>
 
-                {/* PILL SELECTOR */}
-                <div className="px-6">
-                    <div className="bg-gray-100 p-1.5 rounded-2xl flex relative font-medium text-sm">
-                        {(['closet', 'suitcase', 'sales'] as ViewType[]).map((view) => (
-                            <button
-                                key={view}
-                                onClick={() => setActiveView(view)}
-                                className={`flex-1 py-2 rounded-xl transition-all duration-300 text-xs font-bold uppercase tracking-wide flex items-center justify-center space-x-1 ${activeView === view
-                                        ? 'bg-white text-primary shadow-sm transform scale-100'
-                                        : 'text-gray-400 hover:text-gray-600'
-                                    }`}
-                            >
-                                {view === 'closet' && <span>Armario</span>}
-                                {view === 'suitcase' && <span>Maleta</span>}
-                                {view === 'sales' && <span>Ventas</span>}
-                            </button>
-                        ))}
+        {/* Pill Selector */}
+        <div className="px-6">
+          <div className="bg-gray-100 p-1.5 rounded-2xl flex font-medium text-sm">
+            {(['closet', 'sales'] as ViewType[]).map((view) => (
+              <button
+                key={view}
+                onClick={() => setActiveView(view)}
+                className={`flex-1 py-2 rounded-xl transition-all duration-300 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-1 ${
+                  activeView === view
+                    ? 'bg-white text-primary shadow-sm'
+                    : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                {view === 'closet' && <><Shirt size={14} /> Armario</>}
+                {view === 'sales' && <><ShoppingBag size={14} /> Ventas</>}
+              </button>
+            ))}
+            <button
+              onClick={() => onNavigate('suitcase')}
+              className="flex-1 py-2 rounded-xl transition-all duration-300 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-1 text-gray-400 hover:text-gray-600"
+            >
+              <ShoppingBag size={14} /> Maleta
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Filter Panel */}
+      {filterPanelOpen && activeView === 'closet' && (
+        <div className="mx-6 mb-4 bg-white rounded-2xl p-4 shadow-sm border border-gray-100 animate-fade-in">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-sm font-semibold">Filtros avanzados</h3>
+            <button
+              onClick={() => { setSeasonFilter('all'); setSortBy('recent'); setFilterPanelOpen(false); }}
+              className="text-xs text-pink-500 font-medium"
+            >
+              Limpiar
+            </button>
+          </div>
+          <div className="mb-3">
+            <p className="text-xs text-gray-400 mb-2">Temporada</p>
+            <div className="flex gap-2 flex-wrap">
+              {SEASONS.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setSeasonFilter(s.id)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
+                    seasonFilter === s.id
+                      ? 'bg-pink-500 text-white'
+                      : 'bg-gray-100 text-gray-500'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 mb-2">Ordenar por</p>
+            <div className="flex gap-2 flex-wrap">
+              {[
+                { id: 'recent' as const, label: 'Recientes' },
+                { id: 'most-used' as const, label: 'Más usados' },
+                { id: 'least-used' as const, label: 'Menos usados' },
+              ].map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setSortBy(s.id)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
+                    sortBy === s.id
+                      ? 'bg-pink-500 text-white'
+                      : 'bg-gray-100 text-gray-500'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW: CLOSET */}
+      {activeView === 'closet' && (
+        <div className="px-6 flex-1 overflow-y-auto no-scrollbar pb-24">
+          {/* Category pills */}
+          <div className="flex space-x-2 overflow-x-auto no-scrollbar mb-4 pb-2">
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setFilter(cat.id)}
+                className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${
+                  filter === cat.id
+                    ? 'bg-primary text-white border-primary shadow-md shadow-primary/20'
+                    : 'bg-white text-gray-500 border-gray-200'
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Count & sort info */}
+          <div className="flex justify-between items-center px-1 mb-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+            <span>{filteredItems.length} Prendas</span>
+            <span>
+              {sortBy === 'recent' && 'Orden: Recientes'}
+              {sortBy === 'most-used' && 'Orden: Más usados'}
+              {sortBy === 'least-used' && 'Orden: Menos usados'}
+            </span>
+          </div>
+
+          {/* Empty state */}
+          {filteredItems.length === 0 && (
+            <div className="text-center py-16">
+              <Shirt size={48} className="mx-auto text-gray-200 mb-3" />
+              {searchQuery ? (
+                <>
+                  <p className="text-gray-400 text-sm">Sin resultados para "{searchQuery}"</p>
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="mt-3 text-pink-500 text-sm font-medium"
+                  >
+                    Limpiar búsqueda
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-gray-400 text-sm">Tu armario está vacío</p>
+                  <p className="text-xs text-gray-300 mt-1">Añade tu primera prenda</p>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Garments Grid */}
+          <div className="grid grid-cols-2 gap-4">
+            {filteredItems.map((garment) => (
+              <div
+                key={garment.id}
+                className="group relative bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
+              >
+                <div className="aspect-[3/4] overflow-hidden bg-gray-50 relative">
+                  <img
+                    src={garment.imageUrl}
+                    alt={garment.name || garment.type}
+                    className={`w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ${
+                      garment.forSale ? 'opacity-70 grayscale-[0.5]' : ''
+                    }`}
+                  />
+                  {!garment.forSale && (
+                    <button
+                      onClick={() => onRemoveGarment(garment.id)}
+                      className="absolute top-2 left-2 bg-white/80 p-1.5 rounded-full text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                  {garment.forSale && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="bg-emerald-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-md">
+                        En venta · {garment.price}€
+                      </span>
                     </div>
+                  )}
                 </div>
+
+                {!garment.forSale && (
+                  <div className="absolute bottom-14 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-[10px] font-bold text-primary shadow-sm">
+                    {garment.usageCount || 0} usos
+                  </div>
+                )}
+
+                <div className="p-3">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{garment.name || garment.type}</p>
+                  <div className="flex items-center justify-between text-xs text-gray-400 capitalize mt-0.5">
+                    <span>{garment.color}</span>
+                    {garment.brand && <span className="text-[10px]">{garment.brand}</span>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* FAB */}
+          <button
+            onClick={() => setIsAdding(true)}
+            className="fixed bottom-28 right-6 w-14 h-14 bg-primary text-white rounded-full shadow-lg shadow-primary/40 flex items-center justify-center hover:scale-105 transition-transform z-40"
+          >
+            <Plus size={28} />
+          </button>
+        </div>
+      )}
+
+      {/* VIEW: SALES */}
+      {activeView === 'sales' && (
+        <div className="px-6 flex-1 overflow-y-auto no-scrollbar pb-24 animate-fade-in">
+          {/* Sales summary card */}
+          <div className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-2xl p-4 text-white mb-6 shadow-lg shadow-emerald-900/10">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-emerald-100 text-xs font-medium mb-1">Valor en escaparate</p>
+                <h3 className="text-3xl font-bold">{totalSalesValue.toFixed(0)}€</h3>
+              </div>
+              <div className="bg-white/20 p-2 rounded-xl">
+                <DollarSign size={20} className="text-white" />
+              </div>
+            </div>
+            <div className="mt-4 flex space-x-3 text-xs font-medium">
+              <span className="bg-white/20 px-2 py-1 rounded-lg">{salesItems.length} en venta</span>
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-gray-800">En tu escaparate</h3>
+            <button
+              onClick={() => { setIsSelling(true); setSelectedForSale(null); setSalePrice(''); }}
+              className="text-primary text-xs font-bold bg-primary/10 px-3 py-1.5 rounded-full"
+            >
+              + Nueva Venta
+            </button>
+          </div>
+
+          {salesItems.length === 0 ? (
+            <div className="text-center py-16">
+              <ShoppingBag size={48} className="mx-auto text-gray-200 mb-3" />
+              <p className="text-gray-400 text-sm">No tienes prendas en venta</p>
+              <p className="text-xs text-gray-300 mt-1">Vende lo que ya no uses</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              {salesItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 relative"
+                >
+                  <div className="absolute top-2 right-2 z-10 bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-sm">
+                    {item.price}€
+                  </div>
+                  <div
+                    className="aspect-square bg-gray-50 cursor-pointer"
+                    onClick={() => openDetailModal(item)}
+                  >
+                    <img src={item.imageUrl} alt="" className="w-full h-full object-cover opacity-90" />
+                  </div>
+                  <div className="p-3">
+                    <p className="text-xs font-bold text-gray-700 truncate">{item.name || item.type}</p>
+                    {item.condition && (
+                      <p className="text-[10px] text-gray-400 capitalize mt-0.5">{item.condition}</p>
+                    )}
+                    <button
+                      onClick={() => cancelSale(item)}
+                      className="mt-2 text-[10px] text-red-400 font-medium underline"
+                    >
+                      Retirar de venta
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ADD GARMENT MODAL */}
+      {isAdding && (
+        <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md p-6 rounded-3xl shadow-2xl animate-fade-in-up max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-gray-800">Nueva Prenda</h2>
+              <button onClick={resetAddModal}>
+                <X size={24} className="text-gray-400" />
+              </button>
             </div>
 
-            {/* --- VIEW: CLOSET --- */}
-            {activeView === 'closet' && (
-                <div className="px-6 flex-1 overflow-y-auto no-scrollbar pb-24">
-                    <div className="flex space-x-2 overflow-x-auto no-scrollbar mb-4 pb-2">
-                        {['all', 'top', 'bottom', 'shoes', 'outerwear'].map((cat) => (
-                            <button
-                                key={cat}
-                                onClick={() => setFilter(cat as any)}
-                                className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${filter === cat
-                                        ? 'bg-primary text-white border-primary shadow-md shadow-primary/20'
-                                        : 'bg-white text-gray-500 border-gray-200'
-                                    }`}
-                            >
-                                {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="flex justify-between items-center px-1 mb-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                        <span>{filteredItems.length} Prendas</span>
-                        <span>Orden: Recientes</span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        {filteredItems.map((garment) => (
-                            <div key={garment.id} className="group relative bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                                <div className="aspect-[3/4] overflow-hidden bg-gray-50 relative">
-                                    <img
-                                        src={garment.imageUrl}
-                                        alt={garment.type}
-                                        className={`w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ${garment.forSale ? 'opacity-70 grayscale-[0.5]' : ''}`}
-                                    />
-                                    {!garment.forSale && (
-                                        <button
-                                            onClick={() => onRemoveGarment(garment.id)}
-                                            className="absolute top-2 left-2 bg-white/80 p-1.5 rounded-full text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                            <Trash2 size={14} />
-                                        </button>
-                                    )}
-
-                                    {garment.forSale && (
-                                        <div className="absolute inset-0 flex items-center justify-center">
-                                            <span className="bg-emerald-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-md">
-                                                En venta
-                                            </span>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {!garment.forSale && (
-                                    <div className="absolute bottom-14 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-[10px] font-bold text-primary shadow-sm">
-                                        {garment.usageCount} usos
-                                    </div>
-                                )}
-
-                                <div className="p-3">
-                                    <p className="text-sm font-semibold text-gray-800 capitalize">{garment.type}</p>
-                                    <p className="text-xs text-gray-400 capitalize">{garment.season}</p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-
-                    <button
-                        onClick={() => setIsAdding(true)}
-                        className="fixed bottom-28 right-6 w-14 h-14 bg-primary text-white rounded-full shadow-lg shadow-primary/40 flex items-center justify-center hover:scale-105 transition-transform z-40"
-                    >
-                        <Plus size={28} />
-                    </button>
+            {/* Image Upload */}
+            <div className="mb-5">
+              {!newImage ? (
+                <label className="w-full aspect-[4/3] bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
+                  <Camera size={40} className="text-gray-300 mb-2" />
+                  <span className="text-sm text-gray-500 font-medium">Subir foto</span>
+                  <span className="text-xs text-gray-300 mt-1">JPG, PNG hasta 10MB</span>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+                </label>
+              ) : (
+                <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden">
+                  <img src={newImage} className="w-full h-full object-cover" />
+                  <button
+                    onClick={() => { setNewImage(null); setNewFile(null); }}
+                    className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full"
+                  >
+                    <X size={16} />
+                  </button>
                 </div>
-            )}
+              )}
+            </div>
 
-            {/* --- VIEW: SUITCASE --- */}
-            {activeView === 'suitcase' && (
-                <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
-                    {/* Inherit from parent logic but specific for this tab if needed */}
-                    <p className="sr-only">Suitcase view is handled via embedding or props</p>
-                </div>
-            )}
+            {/* Name */}
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-gray-500 mb-1.5">Nombre</label>
+              <input
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                placeholder="Ej: Camiseta rayas azul"
+                className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-pink-300"
+              />
+            </div>
 
-            {/* --- VIEW: SALES --- */}
-            {activeView === 'sales' && (
-                <div className="px-6 flex-1 overflow-y-auto no-scrollbar pb-24 animate-fade-in">
-                    <div className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-2xl p-4 text-white mb-6 shadow-lg shadow-emerald-900/10">
-                        <div className="flex justify-between items-start">
-                            <div>
-                                <p className="text-emerald-100 text-xs font-medium mb-1">Valor en armario</p>
-                                <h3 className="text-3xl font-bold">{totalSalesValue}€</h3>
-                            </div>
-                            <div className="bg-white/20 p-2 rounded-xl">
-                                <DollarSign size={20} className="text-white" />
-                            </div>
-                        </div>
-                        <div className="mt-4 flex space-x-3 text-xs font-medium">
-                            <span className="bg-white/20 px-2 py-1 rounded-lg">{salesItems.length} en venta</span>
-                            <span className="bg-white/20 px-2 py-1 rounded-lg">0 vendidos</span>
-                        </div>
-                    </div>
+            {/* Category */}
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-gray-500 mb-1.5">Categoría</label>
+              <div className="flex gap-2 flex-wrap">
+                {CATEGORIES.filter(c => c.id !== 'all').map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setNewCategory(cat.id)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
+                      newCategory === cat.id
+                        ? 'bg-pink-500 text-white'
+                        : 'bg-gray-100 text-gray-500'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-bold text-gray-800">En tu escaparate</h3>
-                        <button
-                            onClick={startSelling}
-                            className="text-primary text-xs font-bold bg-primary/10 px-3 py-1.5 rounded-full"
-                        >
-                            Nueva Venta
-                        </button>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        {salesItems.map((item) => (
-                            <div
-                                key={item.id}
-                                className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 relative cursor-pointer"
-                                onClick={() => openDetailModal(item)}
-                            >
-                                <div className="absolute top-2 right-2 z-10 bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-sm">
-                                    {item.price}€
-                                </div>
-                                <div className="aspect-square bg-gray-50">
-                                    <img src={item.imageUrl} className="w-full h-full object-cover opacity-90" />
-                                </div>
-                                <div className="p-3">
-                                    <div className="flex justify-between items-center mb-1">
-                                        <p className="text-xs font-bold text-gray-700 capitalize">{item.type}</p>
-                                        <Tag size={12} className="text-gray-400" />
-                                    </div>
-                                    <div className="flex items-center space-x-1 text-emerald-600 text-[10px] font-bold bg-emerald-50 px-2 py-1 rounded-md w-max">
-                                        <ShoppingBag size={10} />
-                                        <span>En venta</span>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-
-                        <button
-                            onClick={startSelling}
-                            className="aspect-[3/4] border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 hover:border-gray-300 transition-all"
-                        >
-                            <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center mb-2">
-                                <Camera size={20} />
-                            </div>
-                            <span className="text-xs font-medium">Vender prenda</span>
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* --- MODALS --- */}
-            {isAdding && (
-                <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-md p-6 rounded-3xl shadow-2xl animate-fade-in-up">
-                        <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-bold text-gray-800">Nueva Prenda</h2>
-                            <button onClick={() => { setIsAdding(false); setNewImage(null); }}><X size={24} className="text-gray-400" /></button>
-                        </div>
-
-                        <div className="mb-6">
-                            {!newImage ? (
-                                <label className="w-full aspect-square bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
-                                    <Camera size={48} className="text-gray-300 mb-2" />
-                                    <span className="text-sm text-gray-500 font-medium">Subir foto</span>
-                                    <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
-                                </label>
-                            ) : (
-                                <div className="relative w-full aspect-square rounded-2xl overflow-hidden">
-                                    <img src={newImage} className="w-full h-full object-cover" />
-                                    <button onClick={() => setNewImage(null)} className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full"><X size={16} /></button>
-                                </div>
-                            )}
-                        </div>
-
-                        <button
-                            disabled={!newImage}
-                            onClick={confirmAdd}
-                            className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl transition-colors"
-                        >
-                            Añadir al Armario
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {isSelling && (
-                <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center">
-                    <div className="bg-white w-full max-w-md h-[85vh] rounded-t-3xl sm:rounded-3xl shadow-2xl animate-fade-in-up flex flex-col">
-                        <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                            <div>
-                                <h2 className="text-xl font-bold text-gray-800">
-                                    {selectedForSale ? 'Ponle precio' : '¿Qué quieres vender?'}
-                                </h2>
-                            </div>
-                            <button onClick={() => { setIsSelling(false); setSelectedForSale(null); }}><X size={24} className="text-gray-400" /></button>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-6 no-scrollbar">
-                            {!selectedForSale ? (
-                                <div className="grid grid-cols-2 gap-4">
-                                    {garments.filter(g => !g.forSale).map(garment => (
-                                        <button
-                                            key={garment.id}
-                                            onClick={() => handleSelectForSale(garment)}
-                                            className="relative bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:border-primary transition-all text-left"
-                                        >
-                                            <div className="aspect-square bg-gray-50">
-                                                <img src={garment.imageUrl} className="w-full h-full object-cover" />
-                                            </div>
-                                            <div className="p-3">
-                                                <p className="text-sm font-semibold text-gray-800 capitalize">{garment.type}</p>
-                                                <div className="mt-2 flex justify-end">
-                                                    <span className="text-xs font-bold text-primary flex items-center bg-primary/5 px-2 py-1 rounded-lg">
-                                                        Vender <ChevronRight size={12} />
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </button>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="flex flex-col items-center">
-                                    <div className="w-32 h-32 rounded-2xl overflow-hidden mb-6 shadow-md border-2 border-white">
-                                        <img src={selectedForSale.imageUrl} className="w-full h-full object-cover" />
-                                    </div>
-                                    <div className="w-full mb-8">
-                                        <label className="block text-sm font-bold text-gray-700 mb-2">Precio (€)</label>
-                                        <div className="relative">
-                                            <DollarSign className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                                            <input
-                                                type="number"
-                                                value={salePrice}
-                                                onChange={(e) => setSalePrice(e.target.value)}
-                                                className="w-full pl-12 pr-4 py-4 bg-gray-50 rounded-2xl text-2xl font-bold text-gray-800 outline-none focus:ring-2 focus:ring-primary"
-                                                placeholder="0.00"
-                                            />
-                                        </div>
-                                    </div>
-                                    <button onClick={() => setSelectedForSale(null)} className="text-sm text-gray-500 mb-6 underline">Elegir otra prenda</button>
-                                    <button
-                                        disabled={!salePrice}
-                                        onClick={confirmSale}
-                                        className="w-full bg-emerald-600 disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl shadow-lg transition-colors"
-                                    >
-                                        Publicar Venta
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {detailItem && (
-                <ProductDetailModal
-                    product={detailItem}
-                    onClose={() => setDetailItem(null)}
+            {/* Color & Brand */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">Color</label>
+                <input
+                  value={newColor}
+                  onChange={e => setNewColor(e.target.value)}
+                  placeholder="Ej: azul"
+                  className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-pink-300"
                 />
-            )}
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">Marca</label>
+                <input
+                  value={newBrand}
+                  onChange={e => setNewBrand(e.target.value)}
+                  placeholder="Opcional"
+                  className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-pink-300"
+                />
+              </div>
+            </div>
+
+            {/* Season */}
+            <div className="mb-6">
+              <label className="block text-xs font-semibold text-gray-500 mb-1.5">Temporada</label>
+              <div className="flex gap-2 flex-wrap">
+                {SEASONS.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => setNewSeason(s.id as any)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
+                      newSeason === s.id
+                        ? 'bg-pink-500 text-white'
+                        : 'bg-gray-100 text-gray-500'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              disabled={!newImage}
+              onClick={confirmAdd}
+              className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl transition-colors"
+            >
+              Añadir al Armario
+            </button>
+          </div>
         </div>
-    );
+      )}
+
+      {/* SELL MODAL */}
+      {isSelling && (
+        <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center">
+          <div className="bg-white w-full max-w-md h-[85vh] rounded-t-3xl sm:rounded-3xl shadow-2xl animate-fade-in-up flex flex-col">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-gray-800">
+                {selectedForSale ? 'Detalles de venta' : '¿Qué quieres vender?'}
+              </h2>
+              <button onClick={() => { setIsSelling(false); setSelectedForSale(null); }}>
+                <X size={24} className="text-gray-400" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 no-scrollbar">
+              {!selectedForSale ? (
+                <div className="grid grid-cols-2 gap-4">
+                  {garments.filter(g => !g.forSale).length === 0 ? (
+                    <div className="col-span-2 text-center py-10">
+                      <p className="text-gray-400 text-sm">No tienes prendas disponibles para vender</p>
+                    </div>
+                  ) : (
+                    garments.filter(g => !g.forSale).map(garment => (
+                      <button
+                        key={garment.id}
+                        onClick={() => setSelectedForSale(garment)}
+                        className="relative bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:border-primary transition-all text-left"
+                      >
+                        <div className="aspect-square bg-gray-50">
+                          <img src={garment.imageUrl} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="p-3">
+                          <p className="text-sm font-semibold text-gray-800 truncate">{garment.name || garment.type}</p>
+                          <div className="mt-2 flex justify-end">
+                            <span className="text-xs font-bold text-primary flex items-center bg-primary/5 px-2 py-1 rounded-lg">
+                              Vender <ChevronRight size={12} />
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  <div className="flex items-center gap-4">
+                    <div className="w-24 h-24 rounded-2xl overflow-hidden shadow-md border-2 border-white flex-shrink-0">
+                      <img src={selectedForSale.imageUrl} className="w-full h-full object-cover" />
+                    </div>
+                    <div>
+                      <p className="font-semibold">{selectedForSale.name || selectedForSale.type}</p>
+                      <p className="text-sm text-gray-400 capitalize">{selectedForSale.color}</p>
+                    </div>
+                  </div>
+
+                  {/* Price */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1.5">Precio (€) *</label>
+                    <div className="relative">
+                      <DollarSign className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                      <input
+                        type="number"
+                        value={salePrice}
+                        onChange={e => setSalePrice(e.target.value)}
+                        className="w-full pl-11 pr-4 py-3 bg-gray-50 rounded-xl text-lg font-bold outline-none focus:ring-2 focus:ring-pink-300"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Size */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1.5">Talla</label>
+                    <input
+                      value={saleSize}
+                      onChange={e => setSaleSize(e.target.value)}
+                      className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-pink-300"
+                      placeholder="Ej: M, 38, 40..."
+                    />
+                  </div>
+
+                  {/* Condition */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1.5">Estado</label>
+                    <div className="flex gap-2 flex-wrap">
+                      {['nuevo', 'como nuevo', 'bueno', 'usado'].map(c => (
+                        <button
+                          key={c}
+                          onClick={() => setSaleCondition(c)}
+                          className={`px-3 py-1.5 rounded-full text-xs font-medium capitalize transition ${
+                            saleCondition === c
+                              ? 'bg-emerald-500 text-white'
+                              : 'bg-gray-100 text-gray-500'
+                          }`}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1.5">Descripción</label>
+                    <textarea
+                      value={saleDescription}
+                      onChange={e => setSaleDescription(e.target.value)}
+                      className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-pink-300 resize-none"
+                      rows={3}
+                      placeholder="Describe la prenda..."
+                    />
+                  </div>
+
+                  <button
+                    onClick={() => setSelectedForSale(null)}
+                    className="text-sm text-gray-500 underline"
+                  >
+                    Elegir otra prenda
+                  </button>
+
+                  <button
+                    disabled={!salePrice}
+                    onClick={confirmSale}
+                    className="w-full bg-emerald-600 disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl shadow-lg transition-colors"
+                  >
+                    Publicar Venta
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Product Detail Modal */}
+      {detailItem && (
+        <ProductDetailModal
+          product={detailItem}
+          onClose={() => setDetailItem(null)}
+        />
+      )}
+    </div>
+  );
 };
 
 export default Wardrobe;

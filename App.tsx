@@ -28,44 +28,36 @@ const App: React.FC = () => {
       const token = localStorage.getItem('beyour_token');
       if (token) {
         try {
-          const savedUser = localStorage.getItem('beyour_user');
-          if (savedUser) setUser(JSON.parse(savedUser));
-
-          // Fetch data with individual error handling
+          // Fetch user from API for fresh data
+          let userData: UserState;
           try {
-            const fetchedGarments = await api.getGarments();
-            setGarments(fetchedGarments);
-          } catch (error) {
-            console.warn("Could not load garments:", error);
-            setGarments([]);
+            userData = await api.getMe();
+            setUser(userData);
+            localStorage.setItem('beyour_user', JSON.stringify(userData));
+          } catch {
+            const savedUser = localStorage.getItem('beyour_user');
+            if (savedUser) {
+              userData = JSON.parse(savedUser);
+              setUser(userData);
+            } else {
+              throw new Error('No user data');
+            }
           }
 
-          try {
-            const fetchedLooks = await api.getLooks();
-            setLooks(fetchedLooks);
-          } catch (error) {
-            console.warn("Could not load looks:", error);
-            setLooks([]);
-          }
+          // Fetch data in parallel
+          const [fetchedGarments, fetchedLooks, fetchedPlanner, fetchedTrips] = await Promise.allSettled([
+            api.getGarments(),
+            api.getLooks(),
+            api.getPlanner(),
+            api.getTrips(),
+          ]);
 
-          try {
-            const fetchedPlanner = await api.getPlanner('me');
-            setPlanner(fetchedPlanner);
-          } catch (error) {
-            console.warn("Could not load planner:", error);
-            setPlanner([]);
-          }
-
-          try {
-            const fetchedTrips = await api.getTrips('me');
-            setTrips(fetchedTrips);
-          } catch (error) {
-            console.warn("Could not load trips:", error);
-            setTrips([]);
-          }
+          if (fetchedGarments.status === 'fulfilled') setGarments(fetchedGarments.value);
+          if (fetchedLooks.status === 'fulfilled') setLooks(fetchedLooks.value);
+          if (fetchedPlanner.status === 'fulfilled') setPlanner(fetchedPlanner.value);
+          if (fetchedTrips.status === 'fulfilled') setTrips(fetchedTrips.value);
         } catch (error) {
           console.error("Critical error during initialization:", error);
-          // Only logout on critical errors (like invalid user data)
           localStorage.removeItem('beyour_token');
           localStorage.removeItem('beyour_user');
           setUser(null);
@@ -95,19 +87,54 @@ const App: React.FC = () => {
   }
 
   // HANDLERS
-  const handleMoodChange = (mood: string) => {
-    if (user) {
-      setUser({ ...user, mood: mood as any });
+  const handleMoodChange = async (mood: string) => {
+    const updated = { ...user, mood: mood };
+    setUser(updated);
+    try {
+      await api.updateProfile({ mood });
+    } catch (e) {
+      console.warn('Failed to save mood:', e);
     }
   };
 
-  const addGarment = async (garment: Garment) => {
-    setGarments([garment, ...garments]);
+  const addGarment = async (garment: Garment, file?: File) => {
+    try {
+      const saved = await api.addGarment({
+        file,
+        name: garment.name || garment.type,
+        category: garment.type,
+        color: garment.color,
+        season: garment.season,
+      });
+      setGarments([saved, ...garments]);
+    } catch (error) {
+      console.error("Error adding garment:", error);
+      // Fallback: add locally
+      setGarments([garment, ...garments]);
+    }
+  };
+
+  const removeGarment = async (id: string) => {
+    setGarments(prev => prev.filter(g => g.id !== id));
+    try {
+      await api.deleteGarment(id);
+    } catch (error) {
+      console.error("Error deleting garment:", error);
+    }
+  };
+
+  const updateGarment = async (g: Garment) => {
+    setGarments(prev => prev.map(item => item.id === g.id ? g : item));
+    try {
+      await api.updateGarment(g.id, g);
+    } catch (error) {
+      console.error("Error updating garment:", error);
+    }
   };
 
   const saveLook = async (look: Look) => {
     try {
-      const savedLook = await api.saveLook(look, user.id || 'me');
+      const savedLook = await api.saveLook(look);
       setLooks([savedLook, ...looks]);
       setActiveTab('wardrobe');
     } catch (error) {
@@ -115,31 +142,62 @@ const App: React.FC = () => {
     }
   };
 
-  const updatePlanner = (entry: PlannerEntry) => {
-    const newPlanner = [...planner.filter(e => e.date !== entry.date), entry];
-    setPlanner(newPlanner);
+  const deleteLook = async (id: string) => {
+    setLooks(prev => prev.filter(l => l.id !== id));
+    try {
+      await api.deleteLook(id);
+    } catch (error) {
+      console.error("Error deleting look:", error);
+    }
+  };
+
+  const updatePlannerEntry = async (entry: PlannerEntry) => {
+    try {
+      const saved = await api.updatePlanner(entry);
+      setPlanner(prev => {
+        const filtered = prev.filter(p => p.date !== entry.date);
+        return [...filtered, saved];
+      });
+    } catch (error) {
+      console.error("Error updating planner:", error);
+      // Fallback local
+      setPlanner(prev => [...prev.filter(e => e.date !== entry.date), entry]);
+    }
+  };
+
+  const handleUpdateUser = async (updatedUser: UserState) => {
+    setUser(updatedUser);
+    localStorage.setItem('beyour_user', JSON.stringify(updatedUser));
+    try {
+      await api.updateProfile(updatedUser);
+    } catch (error) {
+      console.warn("Error saving profile:", error);
+    }
   };
 
   const renderActivePage = () => {
     switch (activeTab) {
       case 'home':
-        return <Home user={user} looks={looks} onMoodChange={handleMoodChange} onNavigate={setActiveTab} plannerEntries={planner} garments={garments} />;
+        return (
+          <Home
+            user={user}
+            looks={looks}
+            onMoodChange={handleMoodChange}
+            onNavigate={setActiveTab}
+            plannerEntries={planner}
+            garments={garments}
+          />
+        );
       case 'wardrobe':
         return (
           <Wardrobe
             garments={garments}
             onAddGarment={addGarment}
-            onRemoveGarment={async (id) => {
-              // TODO: api call for delete
-              setGarments(prev => prev.filter(g => g.id !== id));
-            }}
-            onUpdateGarment={async (g) => {
-              // TODO: api call for update
-              setGarments(prev => prev.map(item => item.id === g.id ? g : item));
-            }}
+            onRemoveGarment={removeGarment}
+            onUpdateGarment={updateGarment}
             looks={looks}
             planner={planner}
-            onUpdatePlanner={updatePlanner}
+            onUpdatePlanner={updatePlannerEntry}
             onNavigate={setActiveTab}
           />
         );
@@ -150,39 +208,64 @@ const App: React.FC = () => {
           <Planner
             looks={looks}
             plannerEntries={planner}
-            onUpdateEntry={async (entry) => {
-              const saved = await api.updatePlanner('me', entry);
-              setPlanner(prev => {
-                const filtered = prev.filter(p => p.date !== entry.date);
-                return [...filtered, saved];
-              });
-            }}
+            onUpdateEntry={updatePlannerEntry}
           />
         );
       case 'community':
-        return <Community />;
+        return <Community user={user} />;
       case 'profile':
-        return <Profile user={user} plannerEntries={planner} looks={looks} onUpdateUser={setUser} garments={garments} />;
+        return (
+          <Profile
+            user={user}
+            plannerEntries={planner}
+            looks={looks}
+            onUpdateUser={handleUpdateUser}
+            garments={garments}
+            onNavigate={setActiveTab}
+          />
+        );
       case 'suitcase':
         return (
           <Suitcase
             trips={trips}
             onAddTrip={async (newTrip) => {
-              const saved = await api.saveTrip('me', newTrip);
-              setTrips(prev => [saved, ...prev]);
+              try {
+                const saved = await api.saveTrip(newTrip);
+                setTrips(prev => [saved, ...prev]);
+              } catch (error) {
+                console.error("Error saving trip:", error);
+                setTrips(prev => [newTrip, ...prev]);
+              }
             }}
             onDeleteTrip={async (id) => {
-              // api.deleteTrip(id)
               setTrips(prev => prev.filter(t => t.id !== id));
+              try {
+                await api.deleteTrip(id);
+              } catch (error) {
+                console.error("Error deleting trip:", error);
+              }
             }}
             onUpdateTrip={async (trip) => {
-              // api.updateTrip(trip)
               setTrips(prev => prev.map(t => t.id === trip.id ? trip : t));
+              try {
+                await api.updateTrip(trip);
+              } catch (error) {
+                console.error("Error updating trip:", error);
+              }
             }}
           />
         );
       default:
-        return <Home user={user} looks={looks} onMoodChange={handleMoodChange} onNavigate={setActiveTab} plannerEntries={planner} garments={garments} />;
+        return (
+          <Home
+            user={user}
+            looks={looks}
+            onMoodChange={handleMoodChange}
+            onNavigate={setActiveTab}
+            plannerEntries={planner}
+            garments={garments}
+          />
+        );
     }
   };
 
