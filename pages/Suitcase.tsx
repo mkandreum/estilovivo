@@ -20,8 +20,8 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
     // Form State for New Trip
     const [newTripForm, setNewTripForm] = useState({
         destination: '',
-        dateStart: null as Date | null,
-        dateEnd: null as Date | null,
+        dateStart: null as string | null,
+        dateEnd: null as string | null,
         garmentIds: [] as string[]
     });
 
@@ -48,7 +48,8 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
     const handleCreateTrip = () => {
         if (!newTripForm.destination || !newTripForm.dateStart) return;
 
-        const formatDate = (date: Date) => {
+        const formatDate = (dateStr: string) => {
+            const date = new Date(dateStr);
             const formatter = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' });
             return formatter.format(date);
         };
@@ -268,7 +269,7 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
                 </div>
 
                 <button
-                    disabled={!newTripForm.destination}
+                    disabled={!newTripForm.destination || !newTripForm.dateStart}
                     onClick={handleCreateTrip}
                     className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl shadow-lg mt-6 mb-20 transition-colors flex-shrink-0"
                 >
