@@ -39,8 +39,8 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: 7d
       
-      # CORS - Use SERVICE_FQDN_APP or SERVICE_URL_APP if provided, otherwise allow all
-      CORS_ORIGIN: ${SERVICE_FQDN_APP:-${SERVICE_URL_APP:-*}}
+      # CORS - Use SERVICE_FQDN_APP if provided by Coolify, otherwise allow all
+      CORS_ORIGIN: ${SERVICE_FQDN_APP:-*}
       
       # Uploads
       UPLOADS_DIR: /app/uploads
