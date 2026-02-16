@@ -119,3 +119,30 @@ export interface ShopItem {
   brand: string;
   condition: string;
 }
+
+export interface ChatParticipant {
+  id: string;
+  name: string;
+  avatar?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  content: string;
+  createdAt: string;
+  sender?: ChatParticipant;
+}
+
+export interface ChatConversation {
+  id: string;
+  itemId?: string | null;
+  itemTitle?: string | null;
+  itemImage?: string | null;
+  itemOwnerId?: string | null;
+  updatedAt: string;
+  lastMessage?: { id: string; content: string; createdAt: string; sender?: ChatParticipant } | null;
+  participants: ChatParticipant[];
+  otherUser?: ChatParticipant | null;
+}

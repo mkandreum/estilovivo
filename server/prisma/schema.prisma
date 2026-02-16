@@ -36,6 +36,8 @@ model User {
   favorites         Favorite[]
   followers         Follow[]   @relation("following")
   following         Follow[]   @relation("follower")
+  chatParticipants  ConversationParticipant[]
+  messages          Message[]
 }
 
 model Product {
@@ -62,6 +64,10 @@ model Product {
   looks       Look[]
   favorites   Favorite[]
   tripGarments TripGarment[]
+  
+  @@index([userId, createdAt])
+  @@index([forSale, category])
+  @@index([userId, category])
 }
 
 model ProductImage {
@@ -92,6 +98,9 @@ model Look {
   likes       Like[]
   comments    Comment[]
   favorites   Favorite[]
+  
+  @@index([isPublic, createdAt])
+  @@index([userId, createdAt])
 }
 
 model LookImage {
@@ -165,6 +174,8 @@ model Comment {
   lookId    String
   look      Look     @relation(fields: [lookId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+  
+  @@index([lookId, createdAt])
 }
 
 model Favorite {
@@ -190,4 +201,40 @@ model Follow {
   createdAt   DateTime @default(now())
 
   @@unique([followerId, followingId])
+}
+
+model Conversation {
+  id            String                     @id @default(cuid())
+  itemId        String?
+  itemTitle     String?
+  itemImage     String?
+  itemOwnerId   String?
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+
+  participants  ConversationParticipant[]
+  messages      Message[]
+}
+
+model ConversationParticipant {
+  id             String        @id @default(cuid())
+  conversationId String
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime      @default(now())
+
+  @@unique([conversationId, userId])
+}
+
+model Message {
+  id             String        @id @default(cuid())
+  conversationId String
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  content        String
+  createdAt      DateTime      @default(now())
+  
+  @@index([conversationId, createdAt])
 }

@@ -1,18 +1,17 @@
-import { Garment, Look, PlannerEntry, UserState, Trip, Comment, CommunityPost, ShopItem } from '../types';
+import { Garment, Look, PlannerEntry, UserState, Trip, Comment, CommunityPost, ShopItem, ChatConversation, ChatMessage } from '../types';
 
 const API_BASE = '/api';
 
 const getHeaders = () => {
-    const token = localStorage.getItem('beyour_token');
+    // Token now sent via httpOnly cookie automatically
     return {
         'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     };
 };
 
 const getAuthHeader = () => {
-    const token = localStorage.getItem('beyour_token');
-    return token ? { 'Authorization': `Bearer ${token}` } : {};
+    // Token now sent via httpOnly cookie automatically
+    return {};
 };
 
 const handleResponse = async (res: Response) => {
@@ -67,40 +66,40 @@ const mapLook = (l: any): Look => ({
 export const api = {
     // ============= AUTH =============
     login: async (credentials: { email: string; password: string }) => {
-        const res = await fetch(`${API_BASE}/auth/login`, {
-            method: 'POST',
+        const res = await fetch(`${API_BASE}/auth/login`, { credentials: 'include', method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(credentials)
         });
         const data = await handleResponse(res);
-        localStorage.setItem('beyour_token', data.token);
+        // Token now stored in httpOnly cookie
         return data;
     },
 
     register: async (userData: { email: string; password: string; name: string; gender?: 'male' | 'female' | 'other'; birthDate?: string }) => {
-        const res = await fetch(`${API_BASE}/auth/register`, {
-            method: 'POST',
+        const res = await fetch(`${API_BASE}/auth/register`, { credentials: 'include', method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(userData)
         });
         const data = await handleResponse(res);
-        localStorage.setItem('beyour_token', data.token);
+        // Token now stored in httpOnly cookie
         return data;
     },
 
-    logout: () => {
-        localStorage.removeItem('beyour_token');
+    logout: async () => {
+        await fetch(`${API_BASE}/auth/logout`, { 
+            credentials: 'include', 
+            method: 'POST' 
+        });
         localStorage.removeItem('beyour_user');
     },
 
     getMe: async (): Promise<UserState> => {
-        const res = await fetch(`${API_BASE}/auth/me`, { headers: getHeaders() });
+        const res = await fetch(`${API_BASE}/auth/me`, { headers: getHeaders(), credentials: 'include' });
         return handleResponse(res);
     },
 
     updateProfile: async (data: Partial<UserState>): Promise<UserState> => {
-        const res = await fetch(`${API_BASE}/auth/profile`, {
-            method: 'PUT',
+        const res = await fetch(`${API_BASE}/auth/profile`, { credentials: 'include', method: 'PUT',
             headers: getHeaders(),
             body: JSON.stringify(data)
         });
@@ -108,8 +107,7 @@ export const api = {
     },
 
     updateProfileWithAvatar: async (data: FormData): Promise<UserState> => {
-        const res = await fetch(`${API_BASE}/auth/profile`, {
-            method: 'PUT',
+        const res = await fetch(`${API_BASE}/auth/profile`, { credentials: 'include', method: 'PUT',
             headers: getAuthHeader() as any,
             body: data
         });
@@ -117,8 +115,7 @@ export const api = {
     },
 
     forgotPassword: async (email: string) => {
-        const res = await fetch(`${API_BASE}/auth/forgot-password`, {
-            method: 'POST',
+        const res = await fetch(`${API_BASE}/auth/forgot-password`, { credentials: 'include', method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email })
         });
@@ -127,9 +124,11 @@ export const api = {
 
     // ============= GARMENTS / PRODUCTS =============
     getGarments: async (): Promise<Garment[]> => {
-        const res = await fetch(`${API_BASE}/products`, { headers: getHeaders() });
+        const res = await fetch(`${API_BASE}/products`, { headers: getHeaders(), credentials: 'include' });
         const data = await handleResponse(res);
-        return data.map(mapProductToGarment);
+        // Backend now returns { items, nextCursor, hasMore } for pagination
+        const items = data.items || data; // Fallback for backwards compatibility
+        return items.map(mapProductToGarment);
     },
 
     addGarment: async (garment: { file?: File; name?: string; category: string; color?: string; season?: string; brand?: string; size?: string }): Promise<Garment> => {
@@ -142,8 +141,7 @@ export const api = {
         if (garment.size) formData.append('size', garment.size);
         if (garment.file) formData.append('images', garment.file);
 
-        const res = await fetch(`${API_BASE}/products`, {
-            method: 'POST',
+        const res = await fetch(`${API_BASE}/products`, { credentials: 'include', method: 'POST',
             headers: getAuthHeader() as any,
             body: formData
         });
@@ -152,15 +150,14 @@ export const api = {
     },
 
     updateGarment: async (id: string, data: Partial<Garment>): Promise<Garment> => {
-        const res = await fetch(`${API_BASE}/products/${id}`, {
-            method: 'PUT',
+        const res = await fetch(`${API_BASE}/products/${id}`, { credentials: 'include', method: 'PUT',
             headers: getHeaders(),
             body: JSON.stringify({
                 name: data.name || data.type,
                 category: data.type,
                 color: data.color,
                 season: data.season,
-                price: data.price,
+                price: data.price === null ? null : data.price,
                 forSale: data.forSale,
                 usageCount: data.usageCount,
                 brand: data.brand,
@@ -174,16 +171,14 @@ export const api = {
     },
 
     deleteGarment: async (id: string): Promise<void> => {
-        const res = await fetch(`${API_BASE}/products/${id}`, {
-            method: 'DELETE',
+        const res = await fetch(`${API_BASE}/products/${id}`, { credentials: 'include', method: 'DELETE',
             headers: getHeaders()
         });
         await handleResponse(res);
     },
 
     markAsWorn: async (id: string): Promise<Garment> => {
-        const res = await fetch(`${API_BASE}/products/${id}/wear`, {
-            method: 'POST',
+        const res = await fetch(`${API_BASE}/products/${id}/wear`, { credentials: 'include', method: 'POST',
             headers: getHeaders()
         });
         const p = await handleResponse(res);
@@ -195,7 +190,7 @@ export const api = {
         if (search) params.append('search', search);
         if (category) params.append('category', category);
 
-        const res = await fetch(`${API_BASE}/products/shop?${params.toString()}`, { headers: getHeaders() });
+        const res = await fetch(`${API_BASE}/products/shop?${params.toString()}`, { headers: getHeaders(), credentials: 'include' });
         const data = await handleResponse(res);
         return data.map((p: any): ShopItem => ({
             id: p.id,
@@ -213,20 +208,23 @@ export const api = {
 
     // ============= LOOKS =============
     getLooks: async (): Promise<Look[]> => {
-        const res = await fetch(`${API_BASE}/looks`, { headers: getHeaders() });
+        const res = await fetch(`${API_BASE}/looks`, { headers: getHeaders(), credentials: 'include' });
         const data = await handleResponse(res);
-        return data.map(mapLook);
+        // Backend now returns { items, nextCursor, hasMore } for pagination
+        const items = data.items || data; // Fallback for backwards compatibility
+        return items.map(mapLook);
     },
 
     getCommunityFeed: async (): Promise<Look[]> => {
-        const res = await fetch(`${API_BASE}/looks/feed`, { headers: getHeaders() });
+        const res = await fetch(`${API_BASE}/looks/feed`, { headers: getHeaders(), credentials: 'include' });
         const data = await handleResponse(res);
-        return data.map(mapLook);
+        // Backend now returns { items, nextCursor, hasMore } for pagination
+        const items = data.items || data; // Fallback for backwards compatibility
+        return items.map(mapLook);
     },
 
     saveLook: async (look: Look): Promise<Look> => {
-        const res = await fetch(`${API_BASE}/looks`, {
-            method: 'POST',
+        const res = await fetch(`${API_BASE}/looks`, { credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({
                 title: look.name,
@@ -240,8 +238,7 @@ export const api = {
     },
 
     updateLook: async (id: string, data: Partial<Look>): Promise<Look> => {
-        const res = await fetch(`${API_BASE}/looks/${id}`, {
-            method: 'PUT',
+        const res = await fetch(`${API_BASE}/looks/${id}`, { credentials: 'include', method: 'PUT',
             headers: getHeaders(),
             body: JSON.stringify({
                 title: data.name,
@@ -255,8 +252,7 @@ export const api = {
     },
 
     deleteLook: async (id: string): Promise<void> => {
-        const res = await fetch(`${API_BASE}/looks/${id}`, {
-            method: 'DELETE',
+        const res = await fetch(`${API_BASE}/looks/${id}`, { credentials: 'include', method: 'DELETE',
             headers: getHeaders()
         });
         await handleResponse(res);
@@ -264,7 +260,7 @@ export const api = {
 
     // ============= PLANNER =============
     getPlanner: async (): Promise<PlannerEntry[]> => {
-        const res = await fetch(`${API_BASE}/planner/me`, { headers: getHeaders() });
+        const res = await fetch(`${API_BASE}/planner/me`, { headers: getHeaders(), credentials: 'include' });
         const data = await handleResponse(res);
         return data.map((e: any) => ({
             date: e.date,
@@ -275,8 +271,7 @@ export const api = {
     },
 
     updatePlanner: async (entry: PlannerEntry): Promise<PlannerEntry> => {
-        const res = await fetch(`${API_BASE}/planner`, {
-            method: 'POST',
+        const res = await fetch(`${API_BASE}/planner`, { credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ ...entry, userId: 'me' })
         });
@@ -290,8 +285,7 @@ export const api = {
     },
 
     deletePlannerEntry: async (date: string): Promise<void> => {
-        const res = await fetch(`${API_BASE}/planner/${date}`, {
-            method: 'DELETE',
+        const res = await fetch(`${API_BASE}/planner/${date}`, { credentials: 'include', method: 'DELETE',
             headers: getHeaders()
         });
         await handleResponse(res);
@@ -299,7 +293,7 @@ export const api = {
 
     // ============= TRIPS =============
     getTrips: async (): Promise<Trip[]> => {
-        const res = await fetch(`${API_BASE}/trips/me`, { headers: getHeaders() });
+        const res = await fetch(`${API_BASE}/trips/me`, { headers: getHeaders(), credentials: 'include' });
         return handleResponse(res);
     },
 
@@ -309,8 +303,7 @@ export const api = {
             ...rest,
             garmentIds: garments ? garments.map(g => g.id) : []
         };
-        const res = await fetch(`${API_BASE}/trips`, {
-            method: 'POST',
+        const res = await fetch(`${API_BASE}/trips`, { credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify(payload)
         });
@@ -323,8 +316,7 @@ export const api = {
             ...rest,
             garmentIds: garments ? garments.map(g => g.id) : []
         };
-        const res = await fetch(`${API_BASE}/trips/${trip.id}`, {
-            method: 'PUT',
+        const res = await fetch(`${API_BASE}/trips/${trip.id}`, { credentials: 'include', method: 'PUT',
             headers: getHeaders(),
             body: JSON.stringify(payload)
         });
@@ -332,16 +324,14 @@ export const api = {
     },
 
     deleteTrip: async (id: string): Promise<void> => {
-        const res = await fetch(`${API_BASE}/trips/${id}`, {
-            method: 'DELETE',
+        const res = await fetch(`${API_BASE}/trips/${id}`, { credentials: 'include', method: 'DELETE',
             headers: getHeaders()
         });
         await handleResponse(res);
     },
 
     addTripItem: async (tripId: string, label: string, isEssential: boolean = false) => {
-        const res = await fetch(`${API_BASE}/trips/${tripId}/items`, {
-            method: 'POST',
+        const res = await fetch(`${API_BASE}/trips/${tripId}/items`, { credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ label, isEssential })
         });
@@ -349,8 +339,7 @@ export const api = {
     },
 
     updateTripItem: async (tripId: string, itemId: string, data: { checked?: boolean; label?: string }) => {
-        const res = await fetch(`${API_BASE}/trips/${tripId}/items/${itemId}`, {
-            method: 'PUT',
+        const res = await fetch(`${API_BASE}/trips/${tripId}/items/${itemId}`, { credentials: 'include', method: 'PUT',
             headers: getHeaders(),
             body: JSON.stringify(data)
         });
@@ -358,8 +347,7 @@ export const api = {
     },
 
     deleteTripItem: async (tripId: string, itemId: string) => {
-        const res = await fetch(`${API_BASE}/trips/${tripId}/items/${itemId}`, {
-            method: 'DELETE',
+        const res = await fetch(`${API_BASE}/trips/${tripId}/items/${itemId}`, { credentials: 'include', method: 'DELETE',
             headers: getHeaders()
         });
         return handleResponse(res);
@@ -367,8 +355,7 @@ export const api = {
 
     // ============= SOCIAL =============
     toggleLike: async (lookId: string): Promise<{ liked: boolean; likesCount: number }> => {
-        const res = await fetch(`${API_BASE}/social/like`, {
-            method: 'POST',
+        const res = await fetch(`${API_BASE}/social/like`, { credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ lookId })
         });
@@ -376,8 +363,7 @@ export const api = {
     },
 
     addComment: async (lookId: string, content: string): Promise<Comment> => {
-        const res = await fetch(`${API_BASE}/social/comment`, {
-            method: 'POST',
+        const res = await fetch(`${API_BASE}/social/comment`, { credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ lookId, content })
         });
@@ -393,7 +379,7 @@ export const api = {
     },
 
     getComments: async (lookId: string): Promise<Comment[]> => {
-        const res = await fetch(`${API_BASE}/social/comments/${lookId}`, { headers: getHeaders() });
+        const res = await fetch(`${API_BASE}/social/comments/${lookId}`, { headers: getHeaders(), credentials: 'include' });
         const data = await handleResponse(res);
         return data.map((c: any) => ({
             id: c.id,
@@ -406,16 +392,14 @@ export const api = {
     },
 
     deleteComment: async (id: string): Promise<void> => {
-        const res = await fetch(`${API_BASE}/social/comment/${id}`, {
-            method: 'DELETE',
+        const res = await fetch(`${API_BASE}/social/comment/${id}`, { credentials: 'include', method: 'DELETE',
             headers: getHeaders()
         });
         await handleResponse(res);
     },
 
     toggleFavorite: async (lookId?: string, productId?: string): Promise<{ favorited: boolean }> => {
-        const res = await fetch(`${API_BASE}/social/favorite`, {
-            method: 'POST',
+        const res = await fetch(`${API_BASE}/social/favorite`, { credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ lookId, productId })
         });
@@ -423,13 +407,12 @@ export const api = {
     },
 
     getFavorites: async () => {
-        const res = await fetch(`${API_BASE}/social/favorites`, { headers: getHeaders() });
+        const res = await fetch(`${API_BASE}/social/favorites`, { headers: getHeaders(), credentials: 'include' });
         return handleResponse(res);
     },
 
     toggleFollow: async (targetUserId: string): Promise<{ following: boolean }> => {
-        const res = await fetch(`${API_BASE}/social/follow`, {
-            method: 'POST',
+        const res = await fetch(`${API_BASE}/social/follow`, { credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ targetUserId })
         });
@@ -438,7 +421,35 @@ export const api = {
 
     // ============= STATS =============
     getStats: async () => {
-        const res = await fetch(`${API_BASE}/stats`, { headers: getHeaders() });
+        const res = await fetch(`${API_BASE}/stats`, { headers: getHeaders(), credentials: 'include' });
+        return handleResponse(res);
+    },
+
+    // ============= CHAT =============
+    getConversations: async (): Promise<ChatConversation[]> => {
+        const res = await fetch(`${API_BASE}/chat/conversations`, { headers: getHeaders(), credentials: 'include' });
+        return handleResponse(res);
+    },
+
+    createConversation: async (payload: { targetUserId: string; itemId?: string; itemTitle?: string; itemImage?: string; initialMessage?: string; }) => {
+        const res = await fetch(`${API_BASE}/chat/conversations`, { credentials: 'include', method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(payload)
+        });
+        return handleResponse(res);
+    },
+
+    getConversationMessages: async (conversationId: string): Promise<ChatMessage[]> => {
+        const res = await fetch(`${API_BASE}/chat/conversations/${conversationId}/messages`, { headers: getHeaders(), credentials: 'include' });
+        return handleResponse(res);
+    },
+
+    sendConversationMessage: async (conversationId: string, content: string): Promise<ChatMessage> => {
+        const res = await fetch(`${API_BASE}/chat/conversations/${conversationId}/messages`, { credentials: 'include', method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ content })
+        });
         return handleResponse(res);
     },
 };
+

@@ -7,10 +7,13 @@ import Planner from './pages/Planner';
 import Community from './pages/Community';
 import Profile from './pages/Profile';
 import Suitcase from './pages/Suitcase';
+import Wishlist from './pages/Wishlist';
+import Chat from './pages/Chat';
 import AuthPage from './pages/AuthPage';
 import { UserState, Garment, Look, PlannerEntry, Trip } from './types';
 import { api } from './services/api';
 import { useLocalStorage, loadFromLocalStorage } from './hooks/useLocalStorage';
+import { useNotification } from './src/context/NotificationContext';
 
 // Theme configurations per gender
 const THEMES = {
@@ -55,6 +58,7 @@ const applyTheme = (gender?: string) => {
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [isLoading, setIsLoading] = useState(true);
+  const { notify } = useNotification();
 
   // GLOBAL STATE
   const [user, setUser] = useState<UserState | null>(null);
@@ -177,9 +181,13 @@ const App: React.FC = () => {
   };
 
   const addGarment = async (garment: Garment, file?: File) => {
-    const newGarments = [garment, ...garments];
-    setGarments(newGarments);
-    localStorage.setItem('beyour_garments', JSON.stringify(newGarments));
+    const tempId = `temp-${Date.now()}`;
+    const optimisticGarment = { ...garment, id: tempId };
+    
+    // Optimistic update
+    setGarments(prev => [optimisticGarment, ...prev]);
+    localStorage.setItem('beyour_garments', JSON.stringify([optimisticGarment, ...garments]));
+    
     try {
       const saved = await api.addGarment({
         file,
@@ -188,72 +196,137 @@ const App: React.FC = () => {
         color: garment.color,
         season: garment.season,
       });
-      setGarments([saved, ...garments]);
-      localStorage.setItem('beyour_garments', JSON.stringify([saved, ...garments]));
+      
+      // Replace temp with real
+      setGarments(prev => {
+        const updated = prev.map(g => g.id === tempId ? saved : g);
+        localStorage.setItem('beyour_garments', JSON.stringify(updated));
+        return updated;
+      });
+      
+      notify('✓ Prenda añadida correctamente', 'success');
     } catch (error) {
+      // Rollback on error
+      setGarments(prev => {
+        const filtered = prev.filter(g => g.id !== tempId);
+        localStorage.setItem('beyour_garments', JSON.stringify(filtered));
+        return filtered;
+      });
+      
+      notify('✗ Error al añadir prenda', 'error');
       console.error("Error adding garment:", error);
     }
   };
 
   const removeGarment = async (id: string) => {
+    const previousGarments = [...garments];
     const filtered = garments.filter(g => g.id !== id);
+    
+    // Optimistic update
     setGarments(filtered);
     localStorage.setItem('beyour_garments', JSON.stringify(filtered));
+    
     try {
       await api.deleteGarment(id);
+      notify('✓ Prenda eliminada', 'success');
     } catch (error) {
+      // Rollback
+      setGarments(previousGarments);
+      localStorage.setItem('beyour_garments', JSON.stringify(previousGarments));
+      notify('✗ Error al eliminar prenda', 'error');
       console.error("Error deleting garment:", error);
     }
   };
 
   const updateGarment = async (g: Garment) => {
+    const previousGarments = [...garments];
     const updated = garments.map(item => item.id === g.id ? g : item);
+    
+    // Optimistic update
     setGarments(updated);
     localStorage.setItem('beyour_garments', JSON.stringify(updated));
+    
     try {
       await api.updateGarment(g.id, g);
+      notify('✓ Prenda actualizada', 'success');
     } catch (error) {
+      // Rollback
+      setGarments(previousGarments);
+      localStorage.setItem('beyour_garments', JSON.stringify(previousGarments));
+      notify('✗ Error al actualizar prenda', 'error');
       console.error("Error updating garment:", error);
     }
   };
 
   const saveLook = async (look: Look) => {
-    const newLooks = [look, ...looks];
-    setLooks(newLooks);
-    localStorage.setItem('beyour_looks', JSON.stringify(newLooks));
+    const tempId = `temp-${Date.now()}`;
+    const optimisticLook = { ...look, id: tempId };
+    
+    // Optimistic update
+    setLooks(prev => [optimisticLook, ...prev]);
+    localStorage.setItem('beyour_looks', JSON.stringify([optimisticLook, ...looks]));
+    
     try {
       const savedLook = await api.saveLook(look);
-      const updated = [savedLook, ...looks];
-      setLooks(updated);
-      localStorage.setItem('beyour_looks', JSON.stringify(updated));
+      
+      // Replace temp with real
+      setLooks(prev => {
+        const updated = prev.map(l => l.id === tempId ? savedLook : l);
+        localStorage.setItem('beyour_looks', JSON.stringify(updated));
+        return updated;
+      });
+      
+      notify('✓ Look guardado correctamente', 'success');
       setActiveTab('wardrobe');
     } catch (error) {
+      // Rollback
+      setLooks(prev => {
+        const filtered = prev.filter(l => l.id !== tempId);
+        localStorage.setItem('beyour_looks', JSON.stringify(filtered));
+        return filtered;
+      });
+      
+      notify('✗ Error al guardar look', 'error');
       console.error("Error saving look:", error);
       setActiveTab('wardrobe');
     }
   };
 
   const deleteLook = async (id: string) => {
+    const previousLooks = [...looks];
     const filtered = looks.filter(l => l.id !== id);
+    
+    // Optimistic update
     setLooks(filtered);
     localStorage.setItem('beyour_looks', JSON.stringify(filtered));
+    
     try {
       await api.deleteLook(id);
+      notify('✓ Look eliminado', 'success');
     } catch (error) {
+      // Rollback
+      setLooks(previousLooks);
+      localStorage.setItem('beyour_looks', JSON.stringify(previousLooks));
+      notify('✗ Error al eliminar look', 'error');
       console.error("Error deleting look:", error);
     }
   };
 
   const updatePlannerEntry = async (entry: PlannerEntry) => {
-    const filtered = planner.filter(p => p.date !== entry.date);
-    const updated = [...filtered, entry];
-    setPlanner(updated);
-    localStorage.setItem('beyour_planner', JSON.stringify(updated));
+    setPlanner(prev => {
+      const filtered = prev.filter(p => p.date !== entry.date);
+      const updated = [...filtered, entry];
+      localStorage.setItem('beyour_planner', JSON.stringify(updated));
+      return updated;
+    });
     try {
       const saved = await api.updatePlanner(entry);
-      const final = [...planner.filter(p => p.date !== entry.date), saved];
-      setPlanner(final);
-      localStorage.setItem('beyour_planner', JSON.stringify(final));
+      setPlanner(prev => {
+        const filtered = prev.filter(p => p.date !== entry.date);
+        const final = [...filtered, saved];
+        localStorage.setItem('beyour_planner', JSON.stringify(final));
+        return final;
+      });
     } catch (error) {
       console.error("Error updating planner:", error);
     }
@@ -306,7 +379,11 @@ const App: React.FC = () => {
           />
         );
       case 'community':
-        return <Community user={user} />;
+        return <Community user={user} onNavigate={setActiveTab} />;
+      case 'wishlist':
+        return <Wishlist garments={garments} onNavigate={setActiveTab} />;
+      case 'chat':
+        return <Chat onNavigate={setActiveTab} />;
       case 'profile':
         return (
           <Profile

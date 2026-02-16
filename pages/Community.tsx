@@ -6,15 +6,17 @@ import { Look, UserState, ShopItem, Comment } from '../types';
 
 interface CommunityProps {
     user: UserState;
+    onNavigate: (tab: string) => void;
 }
 
-const Community: React.FC<CommunityProps> = ({ user }) => {
+const Community: React.FC<CommunityProps> = ({ user, onNavigate }) => {
     const [activeTab, setActiveTab] = useState<'feed' | 'shop'>('feed');
     const [selectedItem, setSelectedItem] = useState<ProductDisplayItem | null>(null);
     const [feedLooks, setFeedLooks] = useState<Look[]>([]);
     const [shopItems, setShopItems] = useState<ShopItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const [favoritedProductIds, setFavoritedProductIds] = useState<Set<string>>(new Set());
 
     // Comments modal
     const [commentsLookId, setCommentsLookId] = useState<string | null>(null);
@@ -46,10 +48,27 @@ const Community: React.FC<CommunityProps> = ({ user }) => {
         }
     }, [searchQuery]);
 
+    const loadFavorites = useCallback(async () => {
+        try {
+            const favs = await api.getFavorites();
+            const ids = new Set<string>();
+            favs.forEach((f: any) => {
+                const id = f.productId || f.product?.id;
+                if (id) ids.add(id);
+            });
+            setFavoritedProductIds(ids);
+        } catch (error) {
+            console.warn("Error loading favorites:", error);
+        }
+    }, []);
+
     useEffect(() => {
         if (activeTab === 'feed') loadFeed();
-        else loadShop();
-    }, [activeTab, loadFeed, loadShop]);
+        else {
+            loadShop();
+            loadFavorites();
+        }
+    }, [activeTab, loadFeed, loadShop, loadFavorites]);
 
     const handleToggleLike = async (lookId: string) => {
         try {
@@ -76,6 +95,20 @@ const Community: React.FC<CommunityProps> = ({ user }) => {
             }));
         } catch (error) {
             console.error("Error toggling favorite:", error);
+        }
+    };
+
+    const handleToggleProductFavorite = async (productId: string) => {
+        try {
+            const result = await api.toggleFavorite(undefined, productId);
+            setFavoritedProductIds(prev => {
+                const next = new Set(prev);
+                if (result.favorited) next.add(productId);
+                else next.delete(productId);
+                return next;
+            });
+        } catch (error) {
+            console.error("Error toggling product favorite:", error);
         }
     };
 
@@ -121,6 +154,35 @@ const Community: React.FC<CommunityProps> = ({ user }) => {
             brand: item.brand,
             size: item.size
         });
+    };
+
+    const handleStartChat = async (item?: ShopItem) => {
+        if (!item) {
+            onNavigate('chat');
+            return;
+        }
+        try {
+            const res = await api.createConversation({
+                targetUserId: item.userId,
+                itemId: item.id,
+                itemTitle: item.title,
+                itemImage: item.image,
+                initialMessage: `Hola, me interesa "${item.title}". ¿Sigue disponible?`
+            });
+            localStorage.setItem('ev_chat_open', res.id);
+        } catch (e) {
+            console.warn('Could not create conversation:', e);
+            localStorage.setItem('ev_chat_draft', JSON.stringify({
+                user: item.user,
+                avatar: item.avatar,
+                itemTitle: item.title,
+                itemId: item.id,
+                targetUserId: item.userId,
+                itemImage: item.image,
+                message: `Hola, me interesa "${item.title}". ¿Sigue disponible?`
+            }));
+        }
+        onNavigate('chat');
     };
 
     const getLookImage = (look: Look) => {
@@ -300,6 +362,15 @@ const Community: React.FC<CommunityProps> = ({ user }) => {
                                         className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 relative group cursor-pointer"
                                         onClick={() => handleItemClick(item)}
                                     >
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleToggleProductFavorite(item.id); }}
+                                            className={`absolute top-2 left-2 z-10 p-1.5 rounded-full shadow-sm ${favoritedProductIds.has(item.id)
+                                                ? 'bg-amber-500 text-white'
+                                                : 'bg-white text-gray-500'
+                                            }`}
+                                        >
+                                            <Bookmark size={14} fill={favoritedProductIds.has(item.id) ? 'currentColor' : 'none'} />
+                                        </button>
                                         <div className="absolute top-2 right-2 z-10 bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-sm">
                                             {item.price}€
                                         </div>
@@ -324,6 +395,12 @@ const Community: React.FC<CommunityProps> = ({ user }) => {
                                             <div className="flex items-center pt-2 border-t border-gray-50">
                                                 <img src={item.avatar} className="w-5 h-5 rounded-full object-cover border border-gray-100 mr-1.5" alt={item.user} />
                                                 <span className="text-[10px] text-gray-500 truncate">{item.user}</span>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleStartChat(item); }}
+                                                    className="ml-auto text-[10px] text-primary font-semibold"
+                                                >
+                                                    Chatear
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -413,6 +490,10 @@ const Community: React.FC<CommunityProps> = ({ user }) => {
                 <ProductDetailModal
                     product={selectedItem}
                     onClose={() => setSelectedItem(null)}
+                    onMessage={() => {
+                        const item = shopItems.find(s => s.id === selectedItem.id);
+                        handleStartChat(item);
+                    }}
                 />
             )}
         </div>

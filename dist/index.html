@@ -59,6 +59,26 @@
             from { opacity: 0; transform: translateY(20px); }
             to { opacity: 1; transform: translateY(0); }
         }
+        @keyframes slide-in {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        @keyframes slide-out {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
         .animate-fade-in {
             animation: fadeIn 0.3s ease-out both;
         }
@@ -67,6 +87,12 @@
         }
         .animate-fadeIn {
             animation: fadeIn 0.4s ease-out both;
+        }
+        .animate-slide-in {
+            animation: slide-in 0.3s ease-out both;
+        }
+        .animate-slide-out {
+            animation: slide-out 0.3s ease-in both;
         }
     </style>
 
@@ -80,7 +106,7 @@
   }
 }
 </script>
-  <script type="module" crossorigin src="/assets/index-D8Hbkww3.js"></script>
+  <script type="module" crossorigin src="/assets/index-Dva2Dsyk.js"></script>
 </head>
 <body>
     <div id="root"></div>

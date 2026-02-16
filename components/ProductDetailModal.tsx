@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Share2, Heart, MapPin, CreditCard, MessageCircle, Truck, Store } from 'lucide-react';
 
 export interface ProductDisplayItem {
@@ -21,11 +21,33 @@ interface ProductDetailModalProps {
   onEdit?: () => void;
   onDelete?: () => void;
   onAddToTrip?: () => void;
+  onMessage?: (product: ProductDisplayItem) => void;
 }
 
-const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClose, onEdit, onDelete, onAddToTrip }) => {
+const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClose, onEdit, onDelete, onAddToTrip, onMessage }) => {
   const [showBuyOptions, setShowBuyOptions] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Load initial favorite status
+  useEffect(() => {
+    const loadFavoriteStatus = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token || !product.id) return;
+        
+        const res = await fetch('/api/social/favorites', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const favorites = await res.json();
+        const isFavorited = favorites.some((fav: any) => fav.productId === product.id);
+        setIsLiked(isFavorited);
+      } catch (e) {
+        console.warn('Failed to load favorite status:', e);
+      }
+    };
+    loadFavoriteStatus();
+  }, [product.id]);
 
   // Gallery uses the product's main image only (no mock images)
   const galleryImages = [product.image];
@@ -40,6 +62,27 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
       }).catch(console.error);
     } else {
       alert("Enlace copiado al portapapeles");
+    }
+  };
+
+  const handleLike = async () => {
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/social/favorite', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ productId: product.id })
+      });
+      const data = await res.json();
+      setIsLiked(data.favorited);
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -63,7 +106,11 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
             <button onClick={handleShare} className="bg-white/20 backdrop-blur-md p-2 rounded-full text-white hover:bg-white/30 transition-colors">
               <Share2 size={20} />
             </button>
-            <button onClick={() => setIsLiked(!isLiked)} className="bg-white/20 backdrop-blur-md p-2 rounded-full text-white hover:bg-white/30 transition-colors">
+            <button 
+              onClick={handleLike} 
+              disabled={isLoading}
+              className="bg-white/20 backdrop-blur-md p-2 rounded-full text-white hover:bg-white/30 transition-colors disabled:opacity-50"
+            >
               <Heart size={20} fill={isLiked ? "currentColor" : "none"} className={isLiked ? "text-rose-500" : "text-white"} />
             </button>
           </div>
@@ -116,7 +163,10 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
                   </div>
                 </div>
               </div>
-              <button className="text-primary bg-primary/10 p-2 rounded-full">
+              <button
+                onClick={() => onMessage?.(product)}
+                className="text-primary bg-primary/10 p-2 rounded-full"
+              >
                 <MessageCircle size={20} />
               </button>
             </div>

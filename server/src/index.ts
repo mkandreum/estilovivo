@@ -10,6 +10,22 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
+import rateLimit from 'express-rate-limit';
+import cookieParser from 'cookie-parser';
+import logger from './logger.js';
+import { processImage } from './imageProcessor.js';
+import { 
+  validate, 
+  registerSchema, 
+  loginSchema, 
+  productSchema, 
+  lookSchema,
+  commentSchema,
+  favoriteSchema,
+  followSchema,
+  plannerSchema,
+  tripSchema
+} from './validators.js';
 
 dotenv.config();
 
@@ -22,17 +38,47 @@ const prisma = new PrismaClient();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const UPLOADS_DIR = process.env.UPLOADS_DIR || '/app/uploads';
 const NODE_ENV = process.env.NODE_ENV || 'development';
-const JWT_SECRET = process.env.JWT_SECRET || 'beyour-secret-key-12345';
 
-// Mailer Config
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.example.com',
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  auth: {
-    user: process.env.SMTP_USER || 'user@example.com',
-    pass: process.env.SMTP_PASS || 'password',
-  },
-});
+// ============= VALIDAR VARIABLES CRÍTICAS =============
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  logger.error('FATAL ERROR: JWT_SECRET environment variable is required');
+  logger.error('Please set JWT_SECRET in your .env file');
+  logger.error('Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+  process.exit(1);
+}
+
+const requiredEnvVars = ['DATABASE_URL', 'JWT_SECRET'];
+const missingVars = requiredEnvVars.filter(key => !process.env[key]);
+if (missingVars.length > 0) {
+  logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
+  process.exit(1);
+}
+
+// ============= SMTP CONFIGURATION =============
+// Check if SMTP is properly configured
+const isEmailConfigured = !!(
+  process.env.SMTP_HOST &&
+  process.env.SMTP_USER &&
+  process.env.SMTP_PASS
+);
+
+if (!isEmailConfigured) {
+  logger.warn('SMTP not configured. Email features will be disabled.');
+  logger.warn('Set SMTP_HOST, SMTP_USER, and SMTP_PASS in .env to enable email.');
+}
+
+// Only create transporter if SMTP is configured
+const transporter = isEmailConfigured
+  ? nodemailer.createTransport({
+      host: process.env.SMTP_HOST!,
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      auth: {
+        user: process.env.SMTP_USER!,
+        pass: process.env.SMTP_PASS!,
+      },
+    })
+  : null;
 
 // Crear directorio de uploads si no existe
 if (!existsSync(UPLOADS_DIR)) {
@@ -50,31 +96,113 @@ const storage = multer.diskStorage({
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true,
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 app.use('/api/uploads', express.static(UPLOADS_DIR));
+
+// ============= RATE LIMITING =============
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 5, // Máximo 5 intentos
+  message: { error: 'Demasiados intentos. Por favor, espera 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const generalLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minuto
+  max: 100, // 100 requests por minuto
+  message: { error: 'Demasiadas peticiones. Por favor, espera un momento.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Aplicar rate limiter general a todas las rutas API
+app.use('/api/', generalLimiter);
 
 // ============= AUTH MIDDLEWARE =============
 const authenticateToken = (req: any, res: Response, next: NextFunction) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  // Check for token in cookie first, then fall back to Authorization header
+  let token = req.cookies?.auth_token;
+  
+  if (!token) {
+    const authHeader = req.headers['authorization'];
+    token = authHeader && authHeader.split(' ')[1];
+  }
+  
   if (!token) return res.status(401).json({ error: 'Token required' });
+  
   jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
-    if (err) return res.status(403).json({ error: 'Invalid or expired token' });
+    if (err) {
+      logger.warn('Invalid token attempt', { error: err.message });
+      return res.status(403).json({ error: 'Invalid or expired token' });
+    }
     req.user = user;
     next();
   });
 };
 
 // ============= HEALTH =============
-app.get('/api/health', (req: Request, res: Response) => {
-  res.json({ status: 'ok', env: NODE_ENV });
+app.get('/api/health', async (req: Request, res: Response) => {
+  const healthCheck = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: NODE_ENV,
+    database: 'unknown',
+    version: process.env.npm_package_version || '0.0.0'
+  };
+
+  try {
+    // Test database connection
+    await prisma.$queryRaw`SELECT 1`;
+    healthCheck.database = 'connected';
+    res.status(200).json(healthCheck);
+  } catch (error) {
+    healthCheck.status = 'error';
+    healthCheck.database = 'disconnected';
+    res.status(503).json(healthCheck);
+  }
+});
+
+// Health check detallado (solo para desarrollo o admin)
+app.get('/api/health/detailed', authenticateToken, async (req: any, res: Response) => {
+  try {
+    const [userCount, productCount, lookCount] = await Promise.all([
+      prisma.user.count(),
+      prisma.product.count(),
+      prisma.look.count(),
+    ]);
+
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: NODE_ENV,
+      database: 'connected',
+      stats: {
+        users: userCount,
+        products: productCount,
+        looks: lookCount,
+      },
+      memory: process.memoryUsage(),
+      versions: {
+        node: process.version,
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching health details' });
+  }
 });
 
 // ============= AUTHENTICATION =============
 
-app.post('/api/auth/register', async (req: Request, res: Response) => {
+app.post('/api/auth/register', authLimiter, validate(registerSchema), async (req: Request, res: Response) => {
   try {
     const { email, password, name, gender, birthDate } = req.body;
     const existingUser = await prisma.user.findUnique({ where: { email } });
@@ -91,15 +219,25 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
       }
     });
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    
+    // Set httpOnly cookie
+    res.cookie('auth_token', token, {
+      httpOnly: true,
+      secure: NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+    
     const { password: _, ...safe } = user;
+    logger.info('User registered successfully', { userId: user.id, email: user.email });
     res.status(201).json({ user: safe, token });
   } catch (error) {
-    console.error(error);
+    logger.error('Registration error', { error });
     res.status(500).json({ error: 'Error during registration' });
   }
 });
 
-app.post('/api/auth/login', async (req: Request, res: Response) => {
+app.post('/api/auth/login', authLimiter, validate(loginSchema), async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
     const user = await prisma.user.findUnique({
@@ -112,19 +250,46 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    
+    // Set httpOnly cookie
+    res.cookie('auth_token', token, {
+      httpOnly: true,
+      secure: NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+    
     const { password: _, _count, ...safe } = user;
+    logger.info('User logged in', { userId: user.id });
     res.json({
       user: { ...safe, followersCount: _count.followers, followingCount: _count.following },
       token
     });
   } catch (error) {
-    console.error(error);
+    logger.error('Login error', { error });
     res.status(500).json({ error: 'Login failed' });
   }
 });
 
-app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
+app.post('/api/auth/logout', (req: Request, res: Response) => {
+  res.clearCookie('auth_token', {
+    httpOnly: true,
+    secure: NODE_ENV === 'production',
+    sameSite: 'strict',
+  });
+  logger.info('User logged out');
+  res.json({ message: 'Logged out successfully' });
+});
+
+app.post('/api/auth/forgot-password', authLimiter, async (req: Request, res: Response) => {
   try {
+    // Check if email is configured
+    if (!transporter) {
+      return res.status(503).json({ 
+        error: 'Email service not configured. Please contact support.' 
+      });
+    }
+
     const { email } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -144,7 +309,7 @@ app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
     });
     res.json({ message: 'Recovery email sent' });
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error during forgot password process' });
   }
 });
@@ -165,7 +330,7 @@ app.get('/api/auth/me', authenticateToken, async (req: any, res: Response) => {
       lookCount: _count.looks
     });
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error fetching user' });
   }
 });
@@ -193,7 +358,7 @@ app.put('/api/auth/profile', authenticateToken, upload.single('avatar'), async (
     const { password: _, _count, ...safe } = user;
     res.json({ ...safe, followersCount: _count.followers, followingCount: _count.following });
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error updating profile' });
   }
 });
@@ -202,14 +367,24 @@ app.put('/api/auth/profile', authenticateToken, upload.single('avatar'), async (
 
 app.get('/api/products', authenticateToken, async (req: any, res: Response) => {
   try {
+    const { cursor, limit = '20' } = req.query;
+    const take = parseInt(limit as string) + 1;
+    
     const products = await prisma.product.findMany({
       where: { userId: req.user.userId },
       include: { images: true, user: { select: { id: true, name: true, avatar: true } } },
       orderBy: { createdAt: 'desc' },
+      take,
+      ...(cursor ? { cursor: { id: cursor as string }, skip: 1 } : {}),
     });
-    res.json(products);
+    
+    const hasMore = products.length > parseInt(limit as string);
+    const items = hasMore ? products.slice(0, -1) : products;
+    const nextCursor = hasMore ? items[items.length - 1]?.id : null;
+    
+    res.json({ items, nextCursor, hasMore });
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error fetching products' });
   }
 });
@@ -234,15 +409,40 @@ app.get('/api/products/shop', authenticateToken, async (req: any, res: Response)
     });
     res.json(products);
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error fetching shop products' });
   }
 });
 
-app.post('/api/products', authenticateToken, upload.array('images', 5), async (req: any, res: Response) => {
+app.post('/api/products', authenticateToken, validate(productSchema), upload.array('images', 5), async (req: any, res: Response) => {
   try {
     const { name, category, color, season, brand, size, condition, description, price, forSale } = req.body;
     const files = req.files as Express.Multer.File[] | undefined;
+
+    // Process images with sharp
+    const processedImages = [];
+    if (files && files.length > 0) {
+      for (const file of files) {
+        try {
+          const processed = await processImage(file.path, UPLOADS_DIR, file.filename);
+          processedImages.push({
+            filename: processed.medium,
+            url: `/api/uploads/${processed.medium}`,
+            thumbnail: `/api/uploads/${processed.thumbnail}`,
+            original: `/api/uploads/${processed.original}`,
+          });
+          // Delete original uploaded file
+          unlinkSync(file.path);
+        } catch (imgError) {
+          logger.error('Image processing failed', { error: imgError, filename: file.filename });
+          // Fallback to original if processing fails
+          processedImages.push({
+            filename: file.filename,
+            url: `/api/uploads/${file.filename}`,
+          });
+        }
+      }
+    }
 
     const product = await prisma.product.create({
       data: {
@@ -258,19 +458,24 @@ app.post('/api/products', authenticateToken, upload.array('images', 5), async (r
         forSale: forSale === 'true' || forSale === true,
         userId: req.user.userId,
         images: {
-          create: files ? files.map((f) => ({ filename: f.filename, url: `/api/uploads/${f.filename}` })) : [],
+          create: processedImages.map(img => ({ 
+            filename: img.filename, 
+            url: img.url 
+          })),
         },
       },
       include: { images: true, user: { select: { id: true, name: true, avatar: true } } },
     });
+    
+    logger.info('Product created', { productId: product.id, userId: req.user.userId });
     res.status(201).json(product);
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error creating product' });
   }
 });
 
-app.put('/api/products/:id', authenticateToken, upload.array('images', 5), async (req: any, res: Response) => {
+app.put('/api/products/:id', authenticateToken, validate(productSchema), upload.array('images', 5), async (req: any, res: Response) => {
   try {
     const { id } = req.params;
     const { name, category, color, season, brand, size, condition, description, price, forSale, usageCount } = req.body;
@@ -288,7 +493,8 @@ app.put('/api/products/:id', authenticateToken, upload.array('images', 5), async
     if (size !== undefined) updateData.size = size;
     if (condition !== undefined) updateData.condition = condition;
     if (description !== undefined) updateData.description = description;
-    if (price !== undefined) updateData.price = parseFloat(price);
+    if (price !== undefined && price !== null) updateData.price = parseFloat(price);
+    if (price === null) updateData.price = null;
     if (forSale !== undefined) updateData.forSale = forSale === 'true' || forSale === true;
     if (usageCount !== undefined) updateData.usageCount = parseInt(usageCount);
 
@@ -304,7 +510,7 @@ app.put('/api/products/:id', authenticateToken, upload.array('images', 5), async
     });
     res.json(product);
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error updating product' });
   }
 });
@@ -322,7 +528,7 @@ app.delete('/api/products/:id', authenticateToken, async (req: any, res: Respons
     await prisma.product.delete({ where: { id } });
     res.json({ success: true });
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error deleting product' });
   }
 });
@@ -336,7 +542,7 @@ app.post('/api/products/:id/wear', authenticateToken, async (req: any, res: Resp
     });
     res.json(product);
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error updating wear count' });
   }
 });
@@ -345,6 +551,9 @@ app.post('/api/products/:id/wear', authenticateToken, async (req: any, res: Resp
 
 app.get('/api/looks', authenticateToken, async (req: any, res: Response) => {
   try {
+    const { cursor, limit = '20' } = req.query;
+    const take = parseInt(limit as string) + 1;
+    
     const looks = await prisma.look.findMany({
       where: { userId: req.user.userId },
       include: {
@@ -354,24 +563,36 @@ app.get('/api/looks', authenticateToken, async (req: any, res: Response) => {
         _count: { select: { likes: true, comments: true } }
       },
       orderBy: { createdAt: 'desc' },
+      take,
+      ...(cursor ? { cursor: { id: cursor as string }, skip: 1 } : {}),
     });
 
+    const hasMore = looks.length > parseInt(limit as string);
+    const items = hasMore ? looks.slice(0, -1) : looks;
+
     const likedIds = new Set((await prisma.like.findMany({
-      where: { userId: req.user.userId, lookId: { in: looks.map(l => l.id) } },
+      where: { userId: req.user.userId, lookId: { in: items.map(l => l.id) } },
       select: { lookId: true }
     })).map(l => l.lookId));
 
-    res.json(looks.map(l => ({
+    const looksWithMeta = items.map(l => ({
       ...l, likesCount: l._count.likes, commentsCount: l._count.comments, isLiked: likedIds.has(l.id)
-    })));
+    }));
+    
+    const nextCursor = hasMore ? items[items.length - 1]?.id : null;
+
+    res.json({ items: looksWithMeta, nextCursor, hasMore });
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error fetching looks' });
   }
 });
 
 app.get('/api/looks/feed', authenticateToken, async (req: any, res: Response) => {
   try {
+    const { cursor, limit = '20' } = req.query;
+    const take = parseInt(limit as string) + 1;
+    
     const looks = await prisma.look.findMany({
       where: { isPublic: true },
       include: {
@@ -381,10 +602,14 @@ app.get('/api/looks/feed', authenticateToken, async (req: any, res: Response) =>
         _count: { select: { likes: true, comments: true } }
       },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take,
+      ...(cursor ? { cursor: { id: cursor as string }, skip: 1 } : {}),
     });
 
-    const lookIds = looks.map(l => l.id);
+    const hasMore = looks.length > parseInt(limit as string);
+    const items = hasMore ? looks.slice(0, -1) : looks;
+    const lookIds = items.map(l => l.id);
+
     const likedIds = new Set((await prisma.like.findMany({
       where: { userId: req.user.userId, lookId: { in: lookIds } },
       select: { lookId: true }
@@ -395,21 +620,48 @@ app.get('/api/looks/feed', authenticateToken, async (req: any, res: Response) =>
       select: { lookId: true }
     })).map(f => f.lookId));
 
-    res.json(looks.map(l => ({
+    const looksWithMeta = items.map(l => ({
       ...l, likesCount: l._count.likes, commentsCount: l._count.comments,
       isLiked: likedIds.has(l.id), isFavorited: favIds.has(l.id)
-    })));
+    }));
+    
+    const nextCursor = hasMore ? items[items.length - 1]?.id : null;
+
+    res.json({ items: looksWithMeta, nextCursor, hasMore });
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error fetching feed' });
   }
 });
 
-app.post('/api/looks', authenticateToken, upload.array('images', 10), async (req: any, res: Response) => {
+app.post('/api/looks', authenticateToken, validate(lookSchema), upload.array('images', 10), async (req: any, res: Response) => {
   try {
     const { title, productIds, isPublic, mood } = req.body;
     const files = req.files as Express.Multer.File[] | undefined;
     const parsedIds = productIds ? (typeof productIds === 'string' ? JSON.parse(productIds) : productIds) : [];
+
+    // Process images with sharp
+    const processedImages = [];
+    if (files && files.length > 0) {
+      for (const file of files) {
+        try {
+          const processed = await processImage(file.path, UPLOADS_DIR, file.filename);
+          processedImages.push({
+            filename: processed.medium,
+            url: `/api/uploads/${processed.medium}`,
+          });
+          // Delete original uploaded file
+          unlinkSync(file.path);
+        } catch (imgError) {
+          logger.error('Image processing failed', { error: imgError, filename: file.filename });
+          // Fallback to original if processing fails
+          processedImages.push({
+            filename: file.filename,
+            url: `/api/uploads/${file.filename}`,
+          });
+        }
+      }
+    }
 
     const look = await prisma.look.create({
       data: {
@@ -418,7 +670,12 @@ app.post('/api/looks', authenticateToken, upload.array('images', 10), async (req
         isPublic: isPublic === 'true' || isPublic === true,
         mood: mood || null,
         products: { connect: parsedIds.map((id: string) => ({ id })) },
-        images: { create: files ? files.map((f) => ({ filename: f.filename, url: `/api/uploads/${f.filename}` })) : [] },
+        images: { 
+          create: processedImages.map(img => ({ 
+            filename: img.filename, 
+            url: img.url 
+          })) 
+        },
       },
       include: {
         images: true, products: { include: { images: true } },
@@ -426,14 +683,16 @@ app.post('/api/looks', authenticateToken, upload.array('images', 10), async (req
         _count: { select: { likes: true, comments: true } }
       },
     });
+    
+    logger.info('Look created', { lookId: look.id, userId: req.user.userId });
     res.status(201).json({ ...look, likesCount: 0, commentsCount: 0, isLiked: false });
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error creating look' });
   }
 });
 
-app.put('/api/looks/:id', authenticateToken, async (req: any, res: Response) => {
+app.put('/api/looks/:id', authenticateToken, validate(lookSchema), async (req: any, res: Response) => {
   try {
     const { id } = req.params;
     const { title, isPublic, mood, productIds } = req.body;
@@ -452,7 +711,7 @@ app.put('/api/looks/:id', authenticateToken, async (req: any, res: Response) => 
     });
     res.json(look);
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error updating look' });
   }
 });
@@ -465,7 +724,7 @@ app.delete('/api/looks/:id', authenticateToken, async (req: any, res: Response) 
     await prisma.look.delete({ where: { id } });
     res.json({ success: true });
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error deleting look' });
   }
 });
@@ -485,12 +744,12 @@ app.post('/api/social/like', authenticateToken, async (req: any, res: Response) 
       res.json({ liked: true, likesCount: await prisma.like.count({ where: { lookId } }) });
     }
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error toggling like' });
   }
 });
 
-app.post('/api/social/comment', authenticateToken, async (req: any, res: Response) => {
+app.post('/api/social/comment', authenticateToken, validate(commentSchema), async (req: any, res: Response) => {
   try {
     const { lookId, content } = req.body;
     const comment = await prisma.comment.create({
@@ -499,7 +758,7 @@ app.post('/api/social/comment', authenticateToken, async (req: any, res: Respons
     });
     res.status(201).json(comment);
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error adding comment' });
   }
 });
@@ -513,7 +772,7 @@ app.get('/api/social/comments/:lookId', authenticateToken, async (req: any, res:
     });
     res.json(comments);
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error fetching comments' });
   }
 });
@@ -525,12 +784,12 @@ app.delete('/api/social/comment/:id', authenticateToken, async (req: any, res: R
     await prisma.comment.delete({ where: { id: req.params.id } });
     res.json({ success: true });
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error deleting comment' });
   }
 });
 
-app.post('/api/social/favorite', authenticateToken, async (req: any, res: Response) => {
+app.post('/api/social/favorite', authenticateToken, validate(favoriteSchema), async (req: any, res: Response) => {
   try {
     const { lookId, productId } = req.body;
     const userId = req.user.userId;
@@ -546,7 +805,7 @@ app.post('/api/social/favorite', authenticateToken, async (req: any, res: Respon
       res.status(400).json({ error: 'lookId or productId required' });
     }
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error toggling favorite' });
   }
 });
@@ -563,12 +822,12 @@ app.get('/api/social/favorites', authenticateToken, async (req: any, res: Respon
     });
     res.json(favorites);
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error fetching favorites' });
   }
 });
 
-app.post('/api/social/follow', authenticateToken, async (req: any, res: Response) => {
+app.post('/api/social/follow', authenticateToken, validate(followSchema), async (req: any, res: Response) => {
   try {
     const { targetUserId } = req.body;
     const userId = req.user.userId;
@@ -577,8 +836,144 @@ app.post('/api/social/follow', authenticateToken, async (req: any, res: Response
     if (existing) { await prisma.follow.delete({ where: { id: existing.id } }); res.json({ following: false }); }
     else { await prisma.follow.create({ data: { followerId: userId, followingId: targetUserId } }); res.json({ following: true }); }
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error toggling follow' });
+  }
+});
+
+// ============= CHAT =============
+
+app.get('/api/chat/conversations', authenticateToken, async (req: any, res: Response) => {
+  try {
+    const userId = req.user.userId;
+    const conversations = await prisma.conversation.findMany({
+      where: { participants: { some: { userId } } },
+      include: {
+        participants: { include: { user: { select: { id: true, name: true, avatar: true } } } },
+        messages: { orderBy: { createdAt: 'desc' }, take: 1, include: { sender: { select: { id: true, name: true, avatar: true } } } }
+      },
+      orderBy: { updatedAt: 'desc' }
+    });
+
+    res.json(conversations.map(c => {
+      const lastMessage = c.messages[0];
+      const other = c.participants.find(p => p.userId !== userId)?.user;
+      return {
+        id: c.id,
+        itemId: c.itemId,
+        itemTitle: c.itemTitle,
+        itemImage: c.itemImage,
+        itemOwnerId: c.itemOwnerId,
+        updatedAt: c.updatedAt,
+        lastMessage: lastMessage ? {
+          id: lastMessage.id,
+          content: lastMessage.content,
+          createdAt: lastMessage.createdAt,
+          sender: lastMessage.sender
+        } : null,
+        participants: c.participants.map(p => p.user),
+        otherUser: other || null
+      };
+    }));
+  } catch (error) {
+    logger.error('Error occurred', { error });
+    res.status(500).json({ error: 'Error fetching conversations' });
+  }
+});
+
+app.post('/api/chat/conversations', authenticateToken, async (req: any, res: Response) => {
+  try {
+    const userId = req.user.userId;
+    const { targetUserId, itemId, itemTitle, itemImage, initialMessage } = req.body;
+    if (!targetUserId) return res.status(400).json({ error: 'targetUserId required' });
+    if (userId === targetUserId) return res.status(400).json({ error: 'Cannot create conversation with yourself' });
+
+    // If itemId provided, validate that targetUserId is the item/product owner
+    if (itemId) {
+      const product = await prisma.product.findUnique({ where: { id: itemId } });
+      if (product && product.userId !== targetUserId) {
+        return res.status(400).json({ error: 'Invalid targetUserId for this item' });
+      }
+    }
+
+    const existing = await prisma.conversation.findFirst({
+      where: {
+        itemId: itemId || undefined,
+        participants: { some: { userId } },
+        AND: { participants: { some: { userId: targetUserId } } }
+      },
+      include: { participants: { include: { user: { select: { id: true, name: true, avatar: true } } } } }
+    });
+
+    if (existing) {
+      return res.json({ id: existing.id });
+    }
+
+    const conversation = await prisma.conversation.create({
+      data: {
+        itemId: itemId || null,
+        itemTitle: itemTitle || null,
+        itemImage: itemImage || null,
+        itemOwnerId: targetUserId,
+        participants: {
+          create: [{ userId }, { userId: targetUserId }]
+        },
+        ...(initialMessage ? {
+          messages: { create: [{ senderId: userId, content: initialMessage }] }
+        } : {})
+      }
+    });
+
+    res.status(201).json({ id: conversation.id });
+  } catch (error) {
+    logger.error('Error occurred', { error });
+    res.status(500).json({ error: 'Error creating conversation' });
+  }
+});
+
+app.get('/api/chat/conversations/:id/messages', authenticateToken, async (req: any, res: Response) => {
+  try {
+    const userId = req.user.userId;
+    const conversationId = req.params.id;
+    const membership = await prisma.conversationParticipant.findFirst({ where: { conversationId, userId } });
+    if (!membership) return res.status(403).json({ error: 'Not authorized' });
+
+    const messages = await prisma.message.findMany({
+      where: { conversationId },
+      include: { sender: { select: { id: true, name: true, avatar: true } } },
+      orderBy: { createdAt: 'asc' }
+    });
+    res.json(messages);
+  } catch (error) {
+    logger.error('Error occurred', { error });
+    res.status(500).json({ error: 'Error fetching messages' });
+  }
+});
+
+app.post('/api/chat/conversations/:id/messages', authenticateToken, async (req: any, res: Response) => {
+  try {
+    const userId = req.user.userId;
+    const conversationId = req.params.id;
+    const { content } = req.body;
+    if (!content) return res.status(400).json({ error: 'content required' });
+
+    const membership = await prisma.conversationParticipant.findFirst({ where: { conversationId, userId } });
+    if (!membership) return res.status(403).json({ error: 'Not authorized' });
+
+    const message = await prisma.message.create({
+      data: { conversationId, senderId: userId, content }
+    });
+
+    // Update conversation's updatedAt timestamp to sort conversations by last activity
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { updatedAt: new Date() }
+    });
+
+    res.status(201).json(message);
+  } catch (error) {
+    logger.error('Error occurred', { error });
+    res.status(500).json({ error: 'Error sending message' });
   }
 });
 
@@ -593,15 +988,21 @@ app.get('/api/planner/:userId', authenticateToken, async (req: any, res: Respons
     });
     res.json(entries);
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error fetching planner' });
   }
 });
 
-app.post('/api/planner', authenticateToken, async (req: any, res: Response) => {
+app.post('/api/planner', authenticateToken, validate(plannerSchema), async (req: any, res: Response) => {
   try {
     const { date, lookId, eventNote, userId } = req.body;
     const targetUserId = (userId === 'me' || !userId) ? req.user.userId : userId;
+
+    // Get previous entry to handle look change
+    const previousEntry = await prisma.plannerEntry.findUnique({
+      where: { userId_date: { userId: targetUserId, date } },
+      include: { look: { include: { products: true } } }
+    });
 
     const entry = await prisma.plannerEntry.upsert({
       where: { userId_date: { userId: targetUserId, date } },
@@ -610,7 +1011,15 @@ app.post('/api/planner', authenticateToken, async (req: any, res: Response) => {
       include: { look: { include: { images: true, products: { include: { images: true } } } } }
     });
 
-    // Increment usage count for garments in the assigned look
+    // Decrement usage count for previous look's garments (if look changed)
+    if (previousEntry?.lookId && previousEntry.lookId !== lookId) {
+      await prisma.product.updateMany({
+        where: { id: { in: previousEntry.look.products.map(p => p.id) } },
+        data: { usageCount: { decrement: 1 } }
+      });
+    }
+
+    // Increment usage count for garments in the newly assigned look
     if (lookId) {
       const look = await prisma.look.findUnique({ where: { id: lookId }, include: { products: true } });
       if (look) {
@@ -623,7 +1032,7 @@ app.post('/api/planner', authenticateToken, async (req: any, res: Response) => {
 
     res.json(entry);
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error updating planner' });
   }
 });
@@ -633,7 +1042,7 @@ app.delete('/api/planner/:date', authenticateToken, async (req: any, res: Respon
     await prisma.plannerEntry.delete({ where: { userId_date: { userId: req.user.userId, date: req.params.date } } });
     res.json({ success: true });
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error deleting planner entry' });
   }
 });
@@ -654,12 +1063,12 @@ app.get('/api/trips/:userId', authenticateToken, async (req: any, res: Response)
     }));
     res.json(mapped);
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error fetching trips' });
   }
 });
 
-app.post('/api/trips', authenticateToken, async (req: any, res: Response) => {
+app.post('/api/trips', authenticateToken, validate(tripSchema), async (req: any, res: Response) => {
   try {
     const { destination, dateStart, dateEnd, items, garmentIds } = req.body;
     const garmentsData = Array.isArray(garmentIds)
@@ -678,12 +1087,12 @@ app.post('/api/trips', authenticateToken, async (req: any, res: Response) => {
       garments: trip.garments.map(g => g.product)
     });
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error creating trip' });
   }
 });
 
-app.put('/api/trips/:id', authenticateToken, async (req: any, res: Response) => {
+app.put('/api/trips/:id', authenticateToken, validate(tripSchema), async (req: any, res: Response) => {
   try {
     const existing = await prisma.trip.findUnique({ where: { id: req.params.id } });
     if (!existing || existing.userId !== req.user.userId) return res.status(403).json({ error: 'Not authorized' });
@@ -709,7 +1118,7 @@ app.put('/api/trips/:id', authenticateToken, async (req: any, res: Response) => 
       garments: trip.garments.map(g => g.product)
     });
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error updating trip' });
   }
 });
@@ -721,7 +1130,7 @@ app.delete('/api/trips/:id', authenticateToken, async (req: any, res: Response) 
     await prisma.trip.delete({ where: { id: req.params.id } });
     res.json({ success: true });
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error deleting trip' });
   }
 });
@@ -735,7 +1144,7 @@ app.put('/api/trips/:tripId/items/:itemId', authenticateToken, async (req: any, 
     });
     res.json(item);
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error updating trip item' });
   }
 });
@@ -747,7 +1156,7 @@ app.post('/api/trips/:tripId/items', authenticateToken, async (req: any, res: Re
     });
     res.json(item);
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error adding trip item' });
   }
 });
@@ -757,7 +1166,7 @@ app.delete('/api/trips/:tripId/items/:itemId', authenticateToken, async (req: an
     await prisma.tripItem.delete({ where: { id: req.params.itemId } });
     res.json({ success: true });
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error deleting trip item' });
   }
 });
@@ -788,7 +1197,7 @@ app.get('/api/stats', authenticateToken, async (req: any, res: Response) => {
       mostWorn, leastWornCount: leastWorn.length, leastWorn
     });
   } catch (error) {
-    console.error(error);
+    logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error fetching stats' });
   }
 });
@@ -834,3 +1243,4 @@ process.on('SIGINT', async () => {
 });
 
 main();
+

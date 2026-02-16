@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { Garment, Look, PlannerEntry } from '../types';
 import {
   Filter, Plus, Search, Trash2, X, Camera, Tag, DollarSign,
-  ShoppingBag, ChevronRight, Shirt, SlidersHorizontal, ArrowLeft
+  ShoppingBag, ChevronRight, Shirt, SlidersHorizontal, ArrowLeft, Sparkles
 } from 'lucide-react';
 import ProductDetailModal, { ProductDisplayItem } from '../components/ProductDetailModal';
 
@@ -17,7 +17,7 @@ interface WardrobeProps {
   onNavigate: (tab: string) => void;
 }
 
-type ViewType = 'closet' | 'sales';
+type ViewType = 'closet' | 'looks' | 'sales';
 
 const CATEGORIES = [
   { id: 'all', label: 'Todo' },
@@ -57,6 +57,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
   // Filter panel
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [seasonFilter, setSeasonFilter] = useState('all');
+  const [colorFilter, setColorFilter] = useState('all');
   const [sortBy, setSortBy] = useState<'recent' | 'most-used' | 'least-used'>('recent');
 
   // Add Modal
@@ -91,6 +92,9 @@ const Wardrobe: React.FC<WardrobeProps> = ({
     // Season filter
     if (seasonFilter !== 'all') items = items.filter(g => g.season === seasonFilter);
 
+    // Color filter
+    if (colorFilter !== 'all') items = items.filter(g => (g.color || '').toLowerCase() === colorFilter);
+
     // Search
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -107,7 +111,25 @@ const Wardrobe: React.FC<WardrobeProps> = ({
     else if (sortBy === 'least-used') items.sort((a, b) => (a.usageCount || 0) - (b.usageCount || 0));
 
     return items;
-  }, [garments, filter, seasonFilter, searchQuery, sortBy]);
+  }, [garments, filter, seasonFilter, colorFilter, searchQuery, sortBy]);
+
+  const availableColors = useMemo(() => {
+    const colors = new Set<string>();
+    garments.forEach(g => {
+      if (g.color) colors.add(g.color.toLowerCase());
+    });
+    return ['all', ...Array.from(colors).sort()];
+  }, [garments]);
+
+  const topUsedItems = useMemo(
+    () => [...garments].sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0)).slice(0, 5),
+    [garments]
+  );
+
+  const lowUsageItems = useMemo(
+    () => garments.filter(g => (g.usageCount || 0) < 2).slice(0, 5),
+    [garments]
+  );
 
   // Sales items
   const salesItems = garments.filter(g => g.forSale);
@@ -176,7 +198,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
     onUpdateGarment({
       ...item,
       forSale: false,
-      price: undefined,
+      price: null,
     });
   };
 
@@ -192,6 +214,12 @@ const Wardrobe: React.FC<WardrobeProps> = ({
       description: item.description || `${item.type} - ${item.color}`,
       isOwnItem: true,
     });
+  };
+
+  const getLookImage = (look: Look) => {
+    if (look.imageUrl) return look.imageUrl;
+    if (look.garments && look.garments.length > 0) return look.garments[0].imageUrl;
+    return null;
   };
 
   const toggleSearch = () => {
@@ -256,7 +284,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
         {/* Pill Selector */}
         <div className="px-6">
           <div className="bg-gray-100 p-1.5 rounded-2xl flex font-medium text-sm">
-            {(['closet', 'sales'] as ViewType[]).map((view) => (
+            {(['closet', 'looks', 'sales'] as ViewType[]).map((view) => (
               <button
                 key={view}
                 onClick={() => setActiveView(view)}
@@ -266,6 +294,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                   }`}
               >
                 {view === 'closet' && <><Shirt size={14} /> Armario</>}
+                {view === 'looks' && <><Sparkles size={14} /> Looks</>}
                 {view === 'sales' && <><ShoppingBag size={14} /> Ventas</>}
               </button>
             ))}
@@ -285,7 +314,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
           <div className="flex justify-between items-center mb-3">
             <h3 className="text-sm font-semibold">Filtros avanzados</h3>
             <button
-              onClick={() => { setSeasonFilter('all'); setSortBy('recent'); setFilterPanelOpen(false); }}
+              onClick={() => { setSeasonFilter('all'); setColorFilter('all'); setSortBy('recent'); setFilterPanelOpen(false); }}
               className="text-xs text-primary font-medium"
             >
               Limpiar
@@ -329,6 +358,23 @@ const Wardrobe: React.FC<WardrobeProps> = ({
               ))}
             </div>
           </div>
+          <div className="mt-3">
+            <p className="text-xs text-gray-400 mb-2">Color</p>
+            <div className="flex gap-2 flex-wrap">
+              {availableColors.map(c => (
+                <button
+                  key={c}
+                  onClick={() => setColorFilter(c)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${colorFilter === c
+                      ? 'bg-primary text-white'
+                      : 'bg-gray-100 text-gray-500'
+                    }`}
+                >
+                  {c === 'all' ? 'Todos' : c}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
@@ -359,6 +405,46 @@ const Wardrobe: React.FC<WardrobeProps> = ({
               {sortBy === 'most-used' && 'Orden: Más usados'}
               {sortBy === 'least-used' && 'Orden: Menos usados'}
             </span>
+          </div>
+
+          {/* Usage Insights */}
+          <div className="grid grid-cols-2 gap-3 mb-4 animate-fade-in">
+            <div className="bg-white rounded-2xl border border-gray-100 p-3 shadow-sm">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Top usadas</p>
+              {topUsedItems.length === 0 ? (
+                <p className="text-xs text-gray-400">Sin datos aun</p>
+              ) : (
+                <div className="space-y-2">
+                  {topUsedItems.slice(0, 3).map(item => (
+                    <div key={item.id} className="flex items-center gap-2">
+                      <img src={item.imageUrl} alt={item.name || item.type} className="w-8 h-8 rounded-lg object-cover" />
+                      <div className="flex-1">
+                        <p className="text-xs font-semibold text-gray-700 truncate">{item.name || item.type}</p>
+                        <p className="text-[10px] text-gray-400">{item.usageCount || 0} usos</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="bg-white rounded-2xl border border-gray-100 p-3 shadow-sm">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Poco usadas</p>
+              {lowUsageItems.length === 0 ? (
+                <p className="text-xs text-gray-400">Todo en rotacion</p>
+              ) : (
+                <div className="space-y-2">
+                  {lowUsageItems.slice(0, 3).map(item => (
+                    <div key={item.id} className="flex items-center gap-2">
+                      <img src={item.imageUrl} alt={item.name || item.type} className="w-8 h-8 rounded-lg object-cover" />
+                      <div className="flex-1">
+                        <p className="text-xs font-semibold text-gray-700 truncate">{item.name || item.type}</p>
+                        <p className="text-[10px] text-gray-400">{item.usageCount || 0} usos</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Empty state */}
@@ -440,6 +526,69 @@ const Wardrobe: React.FC<WardrobeProps> = ({
           >
             <Plus size={28} />
           </button>
+        </div>
+      )}
+
+      {/* VIEW: LOOKS */}
+      {activeView === 'looks' && (
+        <div className="px-6 flex-1 overflow-y-auto no-scrollbar pb-24 animate-fade-in">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-gray-800">Tus Looks</h3>
+            <button
+              onClick={() => onNavigate('create')}
+              className="text-primary text-xs font-bold bg-primary/10 px-3 py-1.5 rounded-full"
+            >
+              + Crear Look
+            </button>
+          </div>
+
+          {looks.length === 0 ? (
+            <div className="text-center py-16">
+              <Sparkles size={48} className="mx-auto text-gray-200 mb-3" />
+              <p className="text-gray-400 text-sm">Aún no tienes looks guardados</p>
+              <p className="text-xs text-gray-300 mt-1">Crea tu primer look en minutos</p>
+              <button
+                onClick={() => onNavigate('create')}
+                className="mt-4 text-primary text-sm font-medium"
+              >
+                Crear Look
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              {looks.map((look) => {
+                const lookImg = getLookImage(look);
+                return (
+                  <div
+                    key={look.id}
+                    className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100"
+                  >
+                    <div className="aspect-[3/4] bg-gray-50 relative">
+                      {lookImg ? (
+                        <img src={lookImg} alt={look.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-300">
+                          <Sparkles size={28} />
+                        </div>
+                      )}
+                      {look.isPublic && (
+                        <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm text-[10px] font-bold text-primary px-2 py-1 rounded-full">
+                          Publico
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-3">
+                      <p className="text-sm font-semibold text-gray-800 truncate">{look.name}</p>
+                      <div className="flex items-center justify-between text-xs text-gray-400 mt-0.5">
+                        <span>{look.garments?.length || 0} prendas</span>
+                        <span className="capitalize">{look.mood || 'personal'}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

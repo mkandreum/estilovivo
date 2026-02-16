@@ -9,9 +9,9 @@ interface CreateLookProps {
 
 const MOOD_OPTIONS = [
   { id: 'happy', emoji: '😊', label: 'Feliz' },
-  { id: 'bold', emoji: '🔥', label: 'Atrevida' },
-  { id: 'chill', emoji: '🌿', label: 'Relajada' },
-  { id: 'romantic', emoji: '🌸', label: 'Romántica' },
+  { id: 'bold', emoji: '🔥', label: 'Audaz' },
+  { id: 'chill', emoji: '🌿', label: 'Relax' },
+  { id: 'romantic', emoji: '🌸', label: 'Romance' },
   { id: 'elegant', emoji: '✨', label: 'Elegante' },
   { id: 'casual', emoji: '☕', label: 'Casual' },
 ];

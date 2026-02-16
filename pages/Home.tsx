@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { UserState, MoodOption, Look, PlannerEntry, Garment } from '../types';
-import { Sun, Sparkles, Briefcase, ChevronRight, RefreshCcw, Shirt, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Sun, Sparkles, Briefcase, ChevronRight, RefreshCcw, Shirt, TrendingUp, AlertTriangle, Heart } from 'lucide-react';
 
 interface HomeProps {
   user: UserState;
@@ -50,6 +50,14 @@ const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate, plannerEntr
   // Real stats
   const mostUsedGarment = useMemo(
     () => [...garments].sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0))[0],
+    [garments]
+  );
+  const topUsedGarments = useMemo(
+    () => [...garments].sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0)).slice(0, 3),
+    [garments]
+  );
+  const lowUsageGarments = useMemo(
+    () => garments.filter(g => (g.usageCount || 0) < 2).slice(0, 3),
     [garments]
   );
   const lowUsageCount = useMemo(
@@ -270,8 +278,72 @@ const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate, plannerEntr
         </div>
       </section>
 
+      {/* Most Used Garments */}
+      <section className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm animate-fade-in-up">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-gray-800">Tus prendas mas usadas</h3>
+          <button onClick={() => onNavigate('wardrobe')} className="text-xs text-primary font-semibold">
+            Ver armario
+          </button>
+        </div>
+        {topUsedGarments.length === 0 ? (
+          <p className="text-sm text-gray-400">Aun no hay suficiente uso registrado.</p>
+        ) : (
+          <div className="space-y-3">
+            {topUsedGarments.map(item => (
+              <div key={item.id} className="flex items-center gap-3">
+                <img src={item.imageUrl} alt={item.name || item.type} className="w-12 h-12 rounded-xl object-cover" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{item.name || item.type}</p>
+                  <p className="text-xs text-gray-400 capitalize">{item.color} · {item.usageCount || 0} usos</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Low Usage Garments */}
+      <section className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm animate-fade-in-up">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-gray-800">Prendas olvidadas</h3>
+          <button onClick={() => onNavigate('wardrobe')} className="text-xs text-primary font-semibold">
+            Reactivar
+          </button>
+        </div>
+        {lowUsageGarments.length === 0 ? (
+          <p className="text-sm text-gray-400">Todo tu armario esta en rotacion.</p>
+        ) : (
+          <div className="space-y-3">
+            {lowUsageGarments.map(item => (
+              <div key={item.id} className="flex items-center gap-3">
+                <img src={item.imageUrl} alt={item.name || item.type} className="w-12 h-12 rounded-xl object-cover" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{item.name || item.type}</p>
+                  <p className="text-xs text-gray-400 capitalize">{item.color} · {item.usageCount || 0} usos</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* Quick Access Grid */}
       <div className="grid grid-cols-2 gap-3 pt-2">
+        <button onClick={() => onNavigate('wardrobe')} className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm text-left hover:border-primary/30 transition-all">
+          <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mb-2">
+            <Shirt size={16} />
+          </div>
+          <span className="font-medium text-gray-700 text-sm">Mi Armario</span>
+          <p className="text-[10px] text-gray-400 mt-0.5">Organiza tus prendas</p>
+        </button>
+        <button onClick={() => onNavigate('wishlist')} className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm text-left hover:border-primary/30 transition-all">
+          <div className="w-8 h-8 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mb-2">
+            <Heart size={16} />
+          </div>
+          <span className="font-medium text-gray-700 text-sm">Wishlist</span>
+          <p className="text-[10px] text-gray-400 mt-0.5">Tus deseos de compra</p>
+        </button>
         <button onClick={() => onNavigate('suitcase')} className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm text-left hover:border-primary/30 transition-all">
           <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-2">
             <Briefcase size={16} />
@@ -283,8 +355,8 @@ const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate, plannerEntr
           <div className="w-8 h-8 rounded-full bg-yellow-50 text-yellow-600 flex items-center justify-center mb-2">
             <Sun size={16} />
           </div>
-          <span className="font-medium text-gray-700 text-sm">Reto del Día</span>
-          <p className="text-[10px] text-gray-400 mt-0.5">Participa y comparte</p>
+          <span className="font-medium text-gray-700 text-sm">Comunidad</span>
+          <p className="text-[10px] text-gray-400 mt-0.5">Inspírate con looks</p>
         </button>
       </div>
     </div>
