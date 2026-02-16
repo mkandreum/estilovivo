@@ -39,8 +39,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:-1713cd2057028b1dbbc5cd0b44b4106a0df1dcb66eb058763d09bf6de9ed733c}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       
-      # CORS (use SERVICE_FQDN_APP from Coolify)
-      CORS_ORIGIN: ${CORS_ORIGIN:-${SERVICE_URL_APP:-http://localhost:3000}}
+      # CORS (Coolify provides SERVICE_URL_APP automatically)
+      CORS_ORIGIN: ${SERVICE_URL_APP:-http://localhost:3000}
       
       # Uploads
       UPLOADS_DIR: /app/uploads
