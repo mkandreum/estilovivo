@@ -86,15 +86,17 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center pointer-events-none sm:p-4">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto transition-opacity" 
-        onClick={onClose}
-      />
+    <>
+      {/* Main Product Modal */}
+      <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center pointer-events-none sm:p-4">
+        {/* Backdrop */}
+        <div 
+          className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto transition-opacity" 
+          onClick={onClose}
+        />
 
-      {/* Main Modal Card */}
-      <div className="bg-white w-screen sm:w-full sm:max-w-md h-[100vh] sm:max-h-[90vh] rounded-t-[2rem] sm:rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden pointer-events-auto animate-fade-in-up transform transition-transform">
+        {/* Main Modal Card */}
+        <div className="bg-white w-screen sm:w-full sm:max-w-md h-[100vh] sm:max-h-[90vh] rounded-t-[2rem] sm:rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden pointer-events-auto animate-fade-in-up transform transition-transform">
         
         {/* Header with Close and Actions */}
         <div className="sticky top-0 z-20 bg-white border-b border-gray-100 px-6 py-4 flex justify-between items-center rounded-t-[2rem]">
@@ -271,123 +273,135 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
             </>
           )}
         </div>
-
-        {/* --- Share Options Modal --- */}
-        {showShareOptions && (
-          <div className="absolute inset-0 z-[70] bg-black/50 backdrop-blur-sm flex flex-col items-end sm:items-center justify-end sm:justify-center sm:p-4">
-            <div className="bg-white w-screen sm:w-full sm:max-w-sm h-auto rounded-t-[2rem] sm:rounded-3xl p-6 animate-fade-in-up shadow-2xl space-y-3">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-gray-900">Compartir</h3>
-                <button 
-                  onClick={() => setShowShareOptions(false)}
-                  className="p-1 hover:bg-gray-100 rounded-full transition-colors"
-                >
-                  <X size={20} className="text-gray-600" />
-                </button>
-              </div>
-
-              {/* Share Options */}
-              <button 
-                onClick={() => {
-                  onShareFeed?.(product);
-                  setShowShareOptions(false);
-                  onClose();
-                }}
-                className="w-full flex items-center gap-4 p-4 border border-gray-200 rounded-2xl hover:border-primary hover:bg-primary/5 transition-all group"
-              >
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center shadow-md group-hover:scale-110 transition-transform flex-shrink-0">
-                  <Eye size={24} className="text-white" />
-                </div>
-                <div className="text-left flex-1 min-w-0">
-                  <p className="font-bold text-gray-800">Publicar en Social</p>
-                  <p className="text-xs text-gray-600">Comparte con tu comunidad</p>
-                </div>
-              </button>
-
-              <button 
-                onClick={handleCopyLink}
-                className="w-full flex items-center gap-4 p-4 border border-gray-200 rounded-2xl hover:border-primary hover:bg-primary/5 transition-all group"
-              >
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-400 to-cyan-500 flex items-center justify-center shadow-md group-hover:scale-110 transition-transform flex-shrink-0">
-                  <Copy size={24} className="text-white" />
-                </div>
-                <div className="text-left flex-1 min-w-0">
-                  <p className="font-bold text-gray-800">{copied ? 'Enlace copiado' : 'Copiar enlace'}</p>
-                  <p className="text-xs text-gray-600">Comparte en otros sitios</p>
-                </div>
-              </button>
-
-              {navigator.share && (
-                <button 
-                  onClick={() => {
-                    navigator.share({
-                      title: product.title,
-                      text: `Mira este ${product.title} en Estilovivo`,
-                      url: window.location.href,
-                    }).catch(console.error);
-                    setShowShareOptions(false);
-                  }}
-                  className="w-full flex items-center gap-4 p-4 border border-gray-200 rounded-2xl hover:border-primary hover:bg-primary/5 transition-all group"
-                >
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-400 to-pink-500 flex items-center justify-center shadow-md group-hover:scale-110 transition-transform flex-shrink-0">
-                    <Send size={24} className="text-white" />
-                  </div>
-                  <div className="text-left flex-1 min-w-0">
-                    <p className="font-bold text-gray-800">Compartir</p>
-                    <p className="text-xs text-gray-600">Mensajería y apps</p>
-                  </div>
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* --- BUY OPTIONS MODAL --- */}
-        {showBuyOptions && (
-          <div className="absolute inset-0 z-[70] bg-black/50 backdrop-blur-sm flex flex-col items-end sm:items-center justify-end sm:justify-center sm:p-4">
-            <div className="bg-white w-screen sm:w-full sm:max-w-sm h-auto rounded-t-[2rem] sm:rounded-3xl p-6 animate-fade-in-up shadow-2xl">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-gray-900">Elige cómo comprar</h3>
-                <button 
-                  onClick={() => setShowBuyOptions(false)}
-                  className="p-1 hover:bg-gray-100 rounded-full transition-colors"
-                >
-                  <X size={20} className="text-gray-600" />
-                </button>
-              </div>
-
-              <div className="space-y-3 mb-4">
-                <button className="w-full flex items-center p-4 border border-gray-200 rounded-2xl hover:border-primary hover:bg-primary/5 transition-all group">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center mr-4 group-hover:scale-110 transition-transform flex-shrink-0">
-                    <Store size={20} className="text-white" />
-                  </div>
-                  <div className="text-left flex-1">
-                    <p className="font-bold text-gray-800">En persona</p>
-                    <p className="text-xs text-gray-600">Queda con {product.user.split(' ')[0]}</p>
-                  </div>
-                  <span className="text-sm font-bold text-emerald-600">Gratis</span>
-                </button>
-
-                <button className="w-full flex items-center p-4 border border-gray-200 rounded-2xl hover:border-primary hover:bg-primary/5 transition-all group">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center mr-4 group-hover:scale-110 transition-transform flex-shrink-0">
-                    <Truck size={20} className="text-white" />
-                  </div>
-                  <div className="text-left flex-1">
-                    <p className="font-bold text-gray-800">Envío a domicilio</p>
-                    <p className="text-xs text-gray-600">Recíbelo en 24-48h</p>
-                  </div>
-                  <span className="text-sm font-bold text-gray-800">3,95€</span>
-                </button>
-              </div>
-
-              <button className="w-full bg-gradient-to-r from-primary to-primary-dark text-white font-bold py-3 rounded-2xl shadow-lg hover:shadow-xl transition-all active:scale-[0.98]">
-                Continuar
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
+
+      {/* === SHARE OPTIONS OVERLAY (INDEPENDENT) === */}
+      {showShareOptions && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex flex-col items-end sm:items-center justify-end sm:justify-center pointer-events-auto sm:p-4">
+          <div className="bg-white w-screen sm:w-full sm:max-w-md rounded-t-[2rem] sm:rounded-3xl p-6 animate-fade-in-up shadow-2xl space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xl font-bold text-gray-900">Compartir artículo</h3>
+              <button 
+                onClick={() => setShowShareOptions(false)}
+                className="p-2 -mr-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X size={24} className="text-gray-600" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600">Elige cómo quieres compartir este artículo</p>
+
+            {/* Share Options */}
+            <button 
+              onClick={() => {
+                onShareFeed?.(product);
+                setShowShareOptions(false);
+                onClose();
+              }}
+              className="w-full flex items-center gap-4 p-4 border-2 border-gray-200 rounded-2xl hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all group text-left"
+            >
+              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center shadow-md group-hover:scale-110 transition-transform flex-shrink-0">
+                <Eye size={28} className="text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-gray-900 text-base">Publicar en Social</p>
+                <p className="text-sm text-gray-600 mt-0.5">Comparte con tu comunidad</p>
+              </div>
+              <span className="text-2xl">📱</span>
+            </button>
+
+            <button 
+              onClick={handleCopyLink}
+              className="w-full flex items-center gap-4 p-4 border-2 border-gray-200 rounded-2xl hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all group text-left"
+            >
+              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-400 to-cyan-500 flex items-center justify-center shadow-md group-hover:scale-110 transition-transform flex-shrink-0">
+                <Copy size={28} className="text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-gray-900 text-base">{copied ? '✓ Enlace copiado' : 'Copiar enlace'}</p>
+                <p className="text-sm text-gray-600 mt-0.5">Compartir por mensajería</p>
+              </div>
+              <span className="text-2xl">📋</span>
+            </button>
+
+            {navigator.share && (
+              <button 
+                onClick={() => {
+                  navigator.share({
+                    title: product.title,
+                    text: `Mira este ${product.title} en Estilovivo`,
+                    url: window.location.href,
+                  }).catch(console.error);
+                  setShowShareOptions(false);
+                }}
+                className="w-full flex items-center gap-4 p-4 border-2 border-gray-200 rounded-2xl hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all group text-left"
+              >
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-400 to-pink-500 flex items-center justify-center shadow-md group-hover:scale-110 transition-transform flex-shrink-0">
+                  <Send size={28} className="text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-gray-900 text-base">Compartir nativa</p>
+                  <p className="text-sm text-gray-600 mt-0.5">WhatsApp, Telegram, etc.</p>
+                </div>
+                <span className="text-2xl">📤</span>
+              </button>
+            )}
+
+            <button 
+              onClick={() => setShowShareOptions(false)}
+              className="w-full mt-2 py-3 text-gray-600 font-bold rounded-xl hover:bg-gray-100 transition-colors"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* === BUY OPTIONS OVERLAY (INDEPENDENT) === */}
+      {showBuyOptions && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex flex-col items-end sm:items-center justify-end sm:justify-center pointer-events-auto sm:p-4">
+          <div className="bg-white w-screen sm:w-full sm:max-w-md rounded-t-[2rem] sm:rounded-3xl p-6 animate-fade-in-up shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">Elige cómo comprar</h3>
+              <button 
+                onClick={() => setShowBuyOptions(false)}
+                className="p-2 -mr-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X size={24} className="text-gray-600" />
+              </button>
+            </div>
+
+            <div className="space-y-3 mb-4">
+              <button className="w-full flex items-center p-4 border border-gray-200 rounded-2xl hover:border-primary hover:bg-primary/5 transition-all group">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center mr-4 group-hover:scale-110 transition-transform flex-shrink-0">
+                  <Store size={20} className="text-white" />
+                </div>
+                <div className="text-left flex-1">
+                  <p className="font-bold text-gray-800">En persona</p>
+                  <p className="text-xs text-gray-600">Queda con {product.user.split(' ')[0]}</p>
+                </div>
+                <span className="text-sm font-bold text-emerald-600">Gratis</span>
+              </button>
+
+              <button className="w-full flex items-center p-4 border border-gray-200 rounded-2xl hover:border-primary hover:bg-primary/5 transition-all group">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center mr-4 group-hover:scale-110 transition-transform flex-shrink-0">
+                  <Truck size={20} className="text-white" />
+                </div>
+                <div className="text-left flex-1">
+                  <p className="font-bold text-gray-800">Envío a domicilio</p>
+                  <p className="text-xs text-gray-600">Recíbelo en 24-48h</p>
+                </div>
+                <span className="text-sm font-bold text-gray-800">3,95€</span>
+              </button>
+            </div>
+
+            <button className="w-full bg-gradient-to-r from-primary to-primary-dark text-white font-bold py-3 rounded-2xl shadow-lg hover:shadow-xl transition-all active:scale-[0.98]">
+              Continuar
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 
