@@ -167,6 +167,34 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate }) => {
     }
   };
 
+  const handleShareFeed = async (product: ProductDisplayItem) => {
+    try {
+      // Create a public look from the product
+      const newLook: Look = {
+        id: '',
+        name: product.title,
+        garmentIds: [String(product.id)],
+        isPublic: true,
+        mood: 'Compartido desde tienda',
+        tags: ['compartido'],
+        createdAt: new Date().toISOString(),
+      };
+      
+      const savedLook = await api.saveLook(newLook);
+      
+      // Add to feed immediately
+      setFeedLooks(prev => [savedLook, ...prev]);
+      
+      // Close the modal
+      setSelectedItem(null);
+      
+      // Show success message
+      console.log('✓ Producto compartido en el feed');
+    } catch (error) {
+      console.error('Error sharing product to feed:', error);
+    }
+  };
+
   const openComments = async (lookId: string) => {
     setCommentsLookId(lookId);
     setLoadingComments(true);
@@ -898,6 +926,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate }) => {
             const item = shopItems.find(s => s.id === selectedItem.id);
             handleStartChat(item);
           }}
+          onShareFeed={handleShareFeed}
         />
       )}
     </div>
