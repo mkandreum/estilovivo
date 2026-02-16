@@ -218,7 +218,7 @@ const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate, plannerEntr
 
       {/* Stats Grid */}
       <section className="grid grid-cols-2 gap-3">
-        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+        <div className="stagger-child bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-primary/30 transition-all">
           <div className="flex items-center space-x-2 text-primary mb-2">
             <Shirt size={16} />
             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Armario</span>
@@ -226,7 +226,7 @@ const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate, plannerEntr
           <span className="text-2xl font-bold text-gray-800">{totalGarments}</span>
           <span className="text-xs text-gray-400 ml-1">prendas</span>
         </div>
-        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+        <div className="stagger-child bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-primary/30 transition-all">
           <div className="flex items-center space-x-2 text-primary mb-2">
             <TrendingUp size={16} />
             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Looks</span>
@@ -243,7 +243,7 @@ const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate, plannerEntr
           <h3 className="font-bold">Armario Consciente</h3>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <div className="bg-lavender-50 p-3 rounded-2xl">
+          <div className="stagger-child bg-lavender-50 p-3 rounded-2xl hover:shadow-md transition-all">
             <p className="text-xs text-gray-500 mb-1">Más usada</p>
             <div className="flex items-center space-x-2">
               {mostUsedGarment ? (
@@ -259,7 +259,7 @@ const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate, plannerEntr
               )}
             </div>
           </div>
-          <div className="bg-orange-50 p-3 rounded-2xl">
+          <div className="stagger-child bg-orange-50 p-3 rounded-2xl hover:shadow-md transition-all">
             <p className="text-xs text-gray-500 mb-1">Baja rotación</p>
             <div className="flex items-center space-x-2">
               {lowUsageCount > 0 ? (
@@ -330,28 +330,28 @@ const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate, plannerEntr
 
       {/* Quick Access Grid */}
       <div className="grid grid-cols-2 gap-3 pt-2">
-        <button onClick={() => onNavigate('wardrobe')} className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm text-left hover:border-primary/30 transition-all">
+        <button onClick={() => onNavigate('wardrobe')} className="stagger-child p-4 bg-white border border-gray-100 rounded-2xl shadow-sm text-left hover:border-primary/30 hover:shadow-md transition-all">
           <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mb-2">
             <Shirt size={16} />
           </div>
           <span className="font-medium text-gray-700 text-sm">Mi Armario</span>
           <p className="text-[10px] text-gray-400 mt-0.5">Organiza tus prendas</p>
         </button>
-        <button onClick={() => onNavigate('wishlist')} className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm text-left hover:border-primary/30 transition-all">
+        <button onClick={() => onNavigate('wishlist')} className="stagger-child p-4 bg-white border border-gray-100 rounded-2xl shadow-sm text-left hover:border-primary/30 hover:shadow-md transition-all">
           <div className="w-8 h-8 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mb-2">
             <Heart size={16} />
           </div>
           <span className="font-medium text-gray-700 text-sm">Wishlist</span>
           <p className="text-[10px] text-gray-400 mt-0.5">Tus deseos de compra</p>
         </button>
-        <button onClick={() => onNavigate('suitcase')} className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm text-left hover:border-primary/30 transition-all">
+        <button onClick={() => onNavigate('suitcase')} className="stagger-child p-4 bg-white border border-gray-100 rounded-2xl shadow-sm text-left hover:border-primary/30 hover:shadow-md transition-all">
           <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-2">
             <Briefcase size={16} />
           </div>
           <span className="font-medium text-gray-700 text-sm">Mis Viajes</span>
           <p className="text-[10px] text-gray-400 mt-0.5">Planifica tu maleta</p>
         </button>
-        <button onClick={() => onNavigate('community')} className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm text-left hover:border-primary/30 transition-all">
+        <button onClick={() => onNavigate('community')} className="stagger-child p-4 bg-white border border-gray-100 rounded-2xl shadow-sm text-left hover:border-primary/30 hover:shadow-md transition-all">
           <div className="w-8 h-8 rounded-full bg-yellow-50 text-yellow-600 flex items-center justify-center mb-2">
             <Sun size={16} />
           </div>

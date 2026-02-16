@@ -93,13 +93,13 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
       >
         {/* Backdrop */}
         <div 
-          className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto transition-opacity" 
+          className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto transition-opacity duration-300" 
           onClick={onClose}
         />
 
         {/* Main Modal Card */}
         <div
-          className="bg-white w-full sm:max-w-md max-h-[90vh] rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden pointer-events-auto animate-fade-in-up transform transition-transform"
+          className="bg-white w-full sm:max-w-md max-h-[90vh] rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden pointer-events-auto animate-pop-in transform transition-transform"
         >
         
         {/* Header with Close and Actions */}
@@ -285,10 +285,10 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
       {/* === SHARE OPTIONS OVERLAY (INDEPENDENT) === */}
       {showShareOptions && (
         <div
-          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center pointer-events-auto p-4"
+          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center pointer-events-auto p-4 animate-fade-in"
         >
           <div
-            className="bg-white w-full sm:max-w-md rounded-3xl p-6 animate-fade-in-up shadow-2xl space-y-4"
+            className="bg-white w-full sm:max-w-md rounded-3xl p-6 animate-pop-in shadow-2xl space-y-4"
           >
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xl font-bold text-gray-900">Compartir artículo</h3>
@@ -310,14 +310,14 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
               }}
               className="w-full flex items-center gap-4 p-4 border-2 border-gray-200 rounded-2xl hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all group text-left"
             >
-              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center shadow-md group-hover:scale-110 transition-transform flex-shrink-0">
+              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center shadow-md group-hover:scale-110 group-hover:rotate-12 transition-transform flex-shrink-0">
                 <Eye size={28} className="text-white" />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-gray-900 text-base">Publicar en Social</p>
                 <p className="text-sm text-gray-600 mt-0.5">Comparte con tu comunidad</p>
               </div>
-              <span className="text-2xl">📱</span>
+              <span className="text-2xl group-hover:scale-110 transition-transform">📱</span>
             </button>
 
             <button 
@@ -370,10 +370,10 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
       {/* === BUY OPTIONS OVERLAY (INDEPENDENT) === */}
       {showBuyOptions && (
         <div
-          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center pointer-events-auto p-4"
+          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center pointer-events-auto p-4 animate-fade-in"
         >
           <div
-            className="bg-white w-full sm:max-w-md rounded-3xl p-6 animate-fade-in-up shadow-2xl"
+            className="bg-white w-full sm:max-w-md rounded-3xl p-6 animate-pop-in shadow-2xl"
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-gray-900">Elige cómo comprar</h3>

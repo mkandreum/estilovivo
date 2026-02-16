@@ -493,7 +493,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate }) => {
               {feedLooks.map(post => {
                 const postImage = getLookImage(post);
                 return (
-                  <div key={post.id} className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in-up">
+                  <div key={post.id} className="stagger-child bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md hover:border-primary/30 transition-all">
                     <div className="p-4 flex justify-between items-center">
                       <div className="flex items-center space-x-3">
                         <img
@@ -593,7 +593,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate }) => {
                 {shopItems.map((item) => (
                   <div
                     key={item.id}
-                    className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 relative group cursor-pointer"
+                    className="stagger-child bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 relative group cursor-pointer hover:shadow-md hover:border-primary/30 transition-all"
                     onClick={() => handleItemClick(item)}
                   >
                     <button
@@ -668,7 +668,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate }) => {
               ) : (
                 <div className="grid grid-cols-2 gap-4">
                   {favorites.map((fav: any) => (
-                    <div key={fav.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div key={fav.id} className="stagger-child bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md hover:border-primary/30 transition-all">
                       {fav.look && (
                         <>
                           <div className="aspect-[3/4] bg-gray-100 relative">
@@ -851,8 +851,8 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate }) => {
 
       {/* Comments Modal */}
       {commentsLookId && (
-        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center">
-          <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl animate-fade-in-up h-[70vh] flex flex-col">
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl animate-pop-in max-h-[90vh] flex flex-col">
             <div className="flex justify-between items-center p-4 border-b border-gray-100">
               <h3 className="font-bold text-gray-800">Comentarios</h3>
               <button onClick={() => { setCommentsLookId(null); setComments([]); }}>

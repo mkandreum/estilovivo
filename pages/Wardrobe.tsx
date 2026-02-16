@@ -476,7 +476,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
               <div
                 key={garment.id}
                 onClick={() => openDetailModal(garment)}
-                className="group relative bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-pointer"
+                className="group stagger-child relative bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md hover:border-primary/50 transition-all cursor-pointer"
               >
                 <div className="aspect-[3/4] overflow-hidden bg-gray-50 relative">
                   <img
@@ -664,8 +664,8 @@ const Wardrobe: React.FC<WardrobeProps> = ({
 
       {/* ADD GARMENT MODAL */}
       {isAdding && (
-        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl animate-fade-in-up flex flex-col max-h-[90vh] sm:max-h-auto">
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl animate-pop-in flex flex-col max-h-[90vh]">
             <div className="flex justify-between items-center mb-6 p-6 border-b border-gray-100 flex-shrink-0">
               <h2 className="text-xl font-bold text-gray-800">Nueva Prenda</h2>
               <button onClick={resetAddModal}>
@@ -783,8 +783,8 @@ const Wardrobe: React.FC<WardrobeProps> = ({
 
       {/* SELL MODAL */}
       {isSelling && (
-        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center">
-          <div className="bg-white w-full max-w-md h-[85vh] rounded-t-3xl sm:rounded-3xl shadow-2xl animate-fade-in-up flex flex-col">
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md max-h-[90vh] rounded-3xl shadow-2xl animate-pop-in flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-800">
                 {selectedForSale ? 'Detalles de venta' : '¿Qué quieres vender?'}
