@@ -37,17 +37,19 @@ services:
       
       # Authentication (CRITICAL - must be set in Coolify or will use default)
       JWT_SECRET: ${JWT_SECRET:-1713cd2057028b1dbbc5cd0b44b4106a0df1dcb66eb058763d09bf6de9ed733c}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      JWT_EXPIRES_IN: 7d
       
       # CORS (Coolify provides SERVICE_URL_APP automatically)
-      CORS_ORIGIN: ${SERVICE_URL_APP:-http://localhost:3000}
+      CORS_ORIGIN: ${SERVICE_URL_APP}
       
       # Uploads
       UPLOADS_DIR: /app/uploads
       
       # Optional: SMTP (for password recovery)
-      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
     volumes:
