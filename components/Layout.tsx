@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Home, Shirt, PlusSquare, Users, User, Heart, MessageCircle } from 'lucide-react';
+import { Home, Shirt, PlusSquare, Users, User } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -12,10 +12,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
     { id: 'home', icon: Home, label: 'Inicio' },
     { id: 'wardrobe', icon: Shirt, label: 'Armario' },
     { id: 'create', icon: PlusSquare, label: 'Crear' },
-    { id: 'wishlist', icon: Heart, label: 'Wishlist' },
-    // Planner moved to Profile
-    { id: 'community', icon: Users, label: 'Social' },
-    { id: 'chat', icon: MessageCircle, label: 'Chat' },
+    { id: 'social', icon: Users, label: 'Social' },
     { id: 'profile', icon: User, label: 'Perfil' },
   ];
 

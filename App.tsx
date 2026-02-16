@@ -4,11 +4,9 @@ import Home from './pages/Home';
 import Wardrobe from './pages/Wardrobe';
 import CreateLook from './pages/CreateLook';
 import Planner from './pages/Planner';
-import Community from './pages/Community';
+import Social from './pages/Social';
 import Profile from './pages/Profile';
 import Suitcase from './pages/Suitcase';
-import Wishlist from './pages/Wishlist';
-import Chat from './pages/Chat';
 import AuthPage from './pages/AuthPage';
 import { UserState, Garment, Look, PlannerEntry, Trip } from './types';
 import { api } from './services/api';
@@ -378,12 +376,8 @@ const App: React.FC = () => {
             onUpdateEntry={updatePlannerEntry}
           />
         );
-      case 'community':
-        return <Community user={user} onNavigate={setActiveTab} />;
-      case 'wishlist':
-        return <Wishlist garments={garments} onNavigate={setActiveTab} />;
-      case 'chat':
-        return <Chat onNavigate={setActiveTab} />;
+      case 'social':
+        return <Social user={user} garments={garments} onNavigate={setActiveTab} />;
       case 'profile':
         return (
           <Profile
