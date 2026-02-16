@@ -29,7 +29,7 @@ services:
       - "3000"
     environment:
       # Server Configuration
-      NODE_ENV: ${NODE_ENV}
+      NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
       
       # Database
@@ -39,17 +39,17 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: 7d
       
-      # CORS
-      CORS_ORIGIN: ${SERVICE_URL_APP}
+      # CORS - Use SERVICE_FQDN_APP or SERVICE_URL_APP if provided, otherwise allow all
+      CORS_ORIGIN: ${SERVICE_FQDN_APP:-${SERVICE_URL_APP:-*}}
       
       # Uploads
       UPLOADS_DIR: /app/uploads
       
       # Optional: SMTP (for password recovery)
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASS: ${SMTP_PASS}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
     volumes:
       # Almacenamiento persistente
       - uploads_data:/app/uploads
