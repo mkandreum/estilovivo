@@ -32,13 +32,24 @@ SMTP_USER=
 SMTP_PASS=
 ```
 
+**NOTA:** Si NODE_ENV o las variables SMTP ya existen, no es necesario agregarlas de nuevo - el docker-compose.yaml ahora tiene valores por defecto.
+
 ## ✅ Variables Auto-provistas por Coolify
 
-Estas variables las genera Coolify automáticamente, **NO las agregues**:
-- `SERVICE_URL_APP` (tu dominio https://estilovivo.xyoncloud.win)
+Estas variables las genera Coolify automáticamente, **NO las agregues manualmente**:
+- `SERVICE_URL_APP` ← **Si existe con sintaxis `${...:-...}`, BÓRRALA**
 - `SERVICE_FQDN_APP`
 - `COOLIFY_URL`
 - `COOLIFY_FQDN`
+
+## 🔧 Solución de Problemas
+
+### Error: "Invalid template: ${SERVICE_URL_APP:-..."
+
+Si ves este error en los logs de deployment:
+1. Ve a **Environment Variables** en Coolify
+2. Busca y **ELIMINA** la variable `SERVICE_URL_APP` (si existe manualmente)
+3. Coolify la generará automáticamente, o el docker-compose usará `*` como fallback
 
 ## 🚀 Después de Configurar
 
