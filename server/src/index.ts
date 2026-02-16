@@ -97,9 +97,9 @@ const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
 // Middleware - CORS configuration
 const allowedOrigins = [
-  process.env.CORS_ORIGIN,
-  process.env.FRONTEND_URL,
+  process.env.SERVICE_FQDN_APP ? `https://${process.env.SERVICE_FQDN_APP}` : null,
   process.env.SERVICE_URL_APP,
+  process.env.FRONTEND_URL,
   'http://localhost:5173',
   'http://localhost:3000'
 ].filter(Boolean); // Remove undefined values
