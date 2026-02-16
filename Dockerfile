@@ -42,6 +42,7 @@ COPY components ./components
 COPY pages ./pages
 COPY services ./services
 COPY hooks ./hooks
+COPY src ./src
 
 # Build React
 RUN npm run build
