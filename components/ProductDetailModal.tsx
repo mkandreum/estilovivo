@@ -88,7 +88,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
   return (
     <>
       {/* Main Product Modal */}
-      <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center pointer-events-none sm:p-4">
+      <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center pointer-events-none sm:p-4" style={{ paddingTop: 'env(safe-area-inset-top, 16px)' }}>
         {/* Backdrop */}
         <div 
           className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto transition-opacity" 
@@ -96,7 +96,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
         />
 
         {/* Main Modal Card */}
-        <div className="bg-white w-screen sm:w-full sm:max-w-md h-[100vh] sm:max-h-[90vh] rounded-t-[2rem] sm:rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden pointer-events-auto animate-fade-in-up transform transition-transform">
+        <div className="bg-white w-screen sm:w-full sm:max-w-md h-[100vh] sm:max-h-[90vh] rounded-t-[2rem] sm:rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden pointer-events-auto animate-fade-in-up transform transition-transform" style={{ paddingTop: 'env(safe-area-inset-top, 12px)' }}>
         
         {/* Header with Close and Actions */}
         <div className="sticky top-0 z-20 bg-white border-b border-gray-100 px-6 py-4 flex justify-between items-center rounded-t-[2rem]">
@@ -278,8 +278,8 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
 
       {/* === SHARE OPTIONS OVERLAY (INDEPENDENT) === */}
       {showShareOptions && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex flex-col items-end sm:items-center justify-end sm:justify-center pointer-events-auto sm:p-4">
-          <div className="bg-white w-screen sm:w-full sm:max-w-md rounded-t-[2rem] sm:rounded-3xl p-6 animate-fade-in-up shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex flex-col items-end sm:items-center justify-end sm:justify-center pointer-events-auto sm:p-4" style={{ paddingTop: 'env(safe-area-inset-top, 16px)' }}>
+          <div className="bg-white w-screen sm:w-full sm:max-w-md rounded-t-[2rem] sm:rounded-3xl p-6 animate-fade-in-up shadow-2xl space-y-4" style={{ marginTop: 'env(safe-area-inset-top, 12px)' }}>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xl font-bold text-gray-900">Compartir artículo</h3>
               <button 
@@ -359,8 +359,8 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
 
       {/* === BUY OPTIONS OVERLAY (INDEPENDENT) === */}
       {showBuyOptions && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex flex-col items-end sm:items-center justify-end sm:justify-center pointer-events-auto sm:p-4">
-          <div className="bg-white w-screen sm:w-full sm:max-w-md rounded-t-[2rem] sm:rounded-3xl p-6 animate-fade-in-up shadow-2xl">
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex flex-col items-end sm:items-center justify-end sm:justify-center pointer-events-auto sm:p-4" style={{ paddingTop: 'env(safe-area-inset-top, 16px)' }}>
+          <div className="bg-white w-screen sm:w-full sm:max-w-md rounded-t-[2rem] sm:rounded-3xl p-6 animate-fade-in-up shadow-2xl" style={{ marginTop: 'env(safe-area-inset-top, 12px)' }}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-gray-900">Elige cómo comprar</h3>
               <button 
