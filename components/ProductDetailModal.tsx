@@ -86,7 +86,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center pointer-events-none p-4">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center pointer-events-none sm:p-4">
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto transition-opacity" 
@@ -94,13 +94,13 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
       />
 
       {/* Main Modal Card */}
-      <div className="bg-white w-full max-w-md max-h-[95vh] sm:max-h-[90vh] rounded-t-3xl sm:rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden pointer-events-auto animate-fade-in-up transform transition-transform">
+      <div className="bg-white w-screen sm:w-full sm:max-w-md h-[100vh] sm:max-h-[90vh] rounded-t-[2rem] sm:rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden pointer-events-auto animate-fade-in-up transform transition-transform">
         
         {/* Header with Close and Actions */}
-        <div className="sticky top-0 z-20 bg-white border-b border-gray-100 p-4 flex justify-between items-center">
+        <div className="sticky top-0 z-20 bg-white border-b border-gray-100 px-6 py-4 flex justify-between items-center rounded-t-[2rem]">
           <button 
             onClick={onClose} 
-            className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+            className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors"
           >
             <X size={24} className="text-gray-600" />
           </button>
@@ -145,7 +145,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
           </div>
 
           {/* Product Details */}
-          <div className="p-6 space-y-4">
+          <div className="px-6 py-4 space-y-4 pb-6">
             
             {/* Title and Brand */}
             <div>
@@ -214,14 +214,11 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
                 <p className="text-sm font-bold text-gray-800">3,95€</p>
               </div>
             </div>
-
-            {/* Spacing for bottom action buttons */}
-            <div className="h-6" />
           </div>
         </div>
 
         {/* Bottom Actions - Sticky */}
-        <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 space-y-3 shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 space-y-3 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] rounded-b-[2rem] sm:rounded-none">
           {product.isOwnItem ? (
             /* Own Item Actions */
             <>
@@ -277,8 +274,8 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
 
         {/* --- Share Options Modal --- */}
         {showShareOptions && (
-          <div className="absolute inset-0 z-[70] bg-black/50 backdrop-blur-sm rounded-t-3xl sm:rounded-3xl flex flex-col items-end sm:items-center justify-end sm:justify-center p-4">
-            <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-6 animate-fade-in-up shadow-2xl space-y-3">
+          <div className="absolute inset-0 z-[70] bg-black/50 backdrop-blur-sm flex flex-col items-end sm:items-center justify-end sm:justify-center sm:p-4">
+            <div className="bg-white w-screen sm:w-full sm:max-w-sm h-auto rounded-t-[2rem] sm:rounded-3xl p-6 animate-fade-in-up shadow-2xl space-y-3">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold text-gray-900">Compartir</h3>
                 <button 
@@ -347,8 +344,8 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClos
 
         {/* --- BUY OPTIONS MODAL --- */}
         {showBuyOptions && (
-          <div className="absolute inset-0 z-[70] bg-black/50 backdrop-blur-sm rounded-t-3xl sm:rounded-3xl flex flex-col items-end sm:items-center justify-end sm:justify-center p-4">
-            <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-6 animate-fade-in-up shadow-2xl">
+          <div className="absolute inset-0 z-[70] bg-black/50 backdrop-blur-sm flex flex-col items-end sm:items-center justify-end sm:justify-center sm:p-4">
+            <div className="bg-white w-screen sm:w-full sm:max-w-sm h-auto rounded-t-[2rem] sm:rounded-3xl p-6 animate-fade-in-up shadow-2xl">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold text-gray-900">Elige cómo comprar</h3>
                 <button 
