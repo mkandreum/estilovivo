@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE "User" (
+CREATE TABLE IF NOT EXISTS "User" (
     "id" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "password" TEXT NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE "User" (
 );
 
 -- CreateTable
-CREATE TABLE "Product" (
+CREATE TABLE IF NOT EXISTS "Product" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT,
@@ -42,7 +42,7 @@ CREATE TABLE "Product" (
 );
 
 -- CreateTable
-CREATE TABLE "ProductImage" (
+CREATE TABLE IF NOT EXISTS "ProductImage" (
     "id" TEXT NOT NULL,
     "url" TEXT NOT NULL,
     "filename" TEXT NOT NULL,
@@ -53,7 +53,7 @@ CREATE TABLE "ProductImage" (
 );
 
 -- CreateTable
-CREATE TABLE "Look" (
+CREATE TABLE IF NOT EXISTS "Look" (
     "id" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "description" TEXT,
@@ -67,7 +67,7 @@ CREATE TABLE "Look" (
 );
 
 -- CreateTable
-CREATE TABLE "LookImage" (
+CREATE TABLE IF NOT EXISTS "LookImage" (
     "id" TEXT NOT NULL,
     "url" TEXT NOT NULL,
     "filename" TEXT NOT NULL,
@@ -78,7 +78,7 @@ CREATE TABLE "LookImage" (
 );
 
 -- CreateTable
-CREATE TABLE "PlannerEntry" (
+CREATE TABLE IF NOT EXISTS "PlannerEntry" (
     "id" TEXT NOT NULL,
     "date" TEXT NOT NULL,
     "lookId" TEXT,
@@ -89,7 +89,7 @@ CREATE TABLE "PlannerEntry" (
 );
 
 -- CreateTable
-CREATE TABLE "Trip" (
+CREATE TABLE IF NOT EXISTS "Trip" (
     "id" TEXT NOT NULL,
     "destination" TEXT NOT NULL,
     "dateStart" TEXT NOT NULL,
@@ -100,7 +100,7 @@ CREATE TABLE "Trip" (
 );
 
 -- CreateTable
-CREATE TABLE "TripItem" (
+CREATE TABLE IF NOT EXISTS "TripItem" (
     "id" TEXT NOT NULL,
     "label" TEXT NOT NULL,
     "checked" BOOLEAN NOT NULL DEFAULT false,
@@ -111,7 +111,7 @@ CREATE TABLE "TripItem" (
 );
 
 -- CreateTable
-CREATE TABLE "TripGarment" (
+CREATE TABLE IF NOT EXISTS "TripGarment" (
     "id" TEXT NOT NULL,
     "tripId" TEXT NOT NULL,
     "productId" TEXT NOT NULL,
@@ -120,7 +120,7 @@ CREATE TABLE "TripGarment" (
 );
 
 -- CreateTable
-CREATE TABLE "Like" (
+CREATE TABLE IF NOT EXISTS "Like" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "lookId" TEXT NOT NULL,
@@ -130,7 +130,7 @@ CREATE TABLE "Like" (
 );
 
 -- CreateTable
-CREATE TABLE "Comment" (
+CREATE TABLE IF NOT EXISTS "Comment" (
     "id" TEXT NOT NULL,
     "content" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
@@ -141,7 +141,7 @@ CREATE TABLE "Comment" (
 );
 
 -- CreateTable
-CREATE TABLE "Favorite" (
+CREATE TABLE IF NOT EXISTS "Favorite" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "lookId" TEXT,
@@ -152,7 +152,7 @@ CREATE TABLE "Favorite" (
 );
 
 -- CreateTable
-CREATE TABLE "Follow" (
+CREATE TABLE IF NOT EXISTS "Follow" (
     "id" TEXT NOT NULL,
     "followerId" TEXT NOT NULL,
     "followingId" TEXT NOT NULL,
@@ -162,7 +162,7 @@ CREATE TABLE "Follow" (
 );
 
 -- CreateTable
-CREATE TABLE "Conversation" (
+CREATE TABLE IF NOT EXISTS "Conversation" (
     "id" TEXT NOT NULL,
     "itemId" TEXT,
     "itemTitle" TEXT,
@@ -175,7 +175,7 @@ CREATE TABLE "Conversation" (
 );
 
 -- CreateTable
-CREATE TABLE "ConversationParticipant" (
+CREATE TABLE IF NOT EXISTS "ConversationParticipant" (
     "id" TEXT NOT NULL,
     "conversationId" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
@@ -185,7 +185,7 @@ CREATE TABLE "ConversationParticipant" (
 );
 
 -- CreateTable
-CREATE TABLE "Message" (
+CREATE TABLE IF NOT EXISTS "Message" (
     "id" TEXT NOT NULL,
     "conversationId" TEXT NOT NULL,
     "senderId" TEXT NOT NULL,
@@ -196,7 +196,7 @@ CREATE TABLE "Message" (
 );
 
 -- CreateTable
-CREATE TABLE "_LookToProduct" (
+CREATE TABLE IF NOT EXISTS "_LookToProduct" (
     "A" TEXT NOT NULL,
     "B" TEXT NOT NULL,
 
@@ -204,52 +204,52 @@ CREATE TABLE "_LookToProduct" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 
 -- CreateIndex
-CREATE INDEX "Product_userId_createdAt_idx" ON "Product"("userId", "createdAt");
+CREATE INDEX IF NOT EXISTS "Product_userId_createdAt_idx" ON "Product"("userId", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "Product_forSale_category_idx" ON "Product"("forSale", "category");
+CREATE INDEX IF NOT EXISTS "Product_forSale_category_idx" ON "Product"("forSale", "category");
 
 -- CreateIndex
-CREATE INDEX "Product_userId_category_idx" ON "Product"("userId", "category");
+CREATE INDEX IF NOT EXISTS "Product_userId_category_idx" ON "Product"("userId", "category");
 
 -- CreateIndex
-CREATE INDEX "Look_isPublic_createdAt_idx" ON "Look"("isPublic", "createdAt");
+CREATE INDEX IF NOT EXISTS "Look_isPublic_createdAt_idx" ON "Look"("isPublic", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "Look_userId_createdAt_idx" ON "Look"("userId", "createdAt");
+CREATE INDEX IF NOT EXISTS "Look_userId_createdAt_idx" ON "Look"("userId", "createdAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "PlannerEntry_userId_date_key" ON "PlannerEntry"("userId", "date");
+CREATE UNIQUE INDEX IF NOT EXISTS "PlannerEntry_userId_date_key" ON "PlannerEntry"("userId", "date");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "TripGarment_tripId_productId_key" ON "TripGarment"("tripId", "productId");
+CREATE UNIQUE INDEX IF NOT EXISTS "TripGarment_tripId_productId_key" ON "TripGarment"("tripId", "productId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Like_userId_lookId_key" ON "Like"("userId", "lookId");
+CREATE UNIQUE INDEX IF NOT EXISTS "Like_userId_lookId_key" ON "Like"("userId", "lookId");
 
 -- CreateIndex
-CREATE INDEX "Comment_lookId_createdAt_idx" ON "Comment"("lookId", "createdAt");
+CREATE INDEX IF NOT EXISTS "Comment_lookId_createdAt_idx" ON "Comment"("lookId", "createdAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Favorite_userId_lookId_key" ON "Favorite"("userId", "lookId");
+CREATE UNIQUE INDEX IF NOT EXISTS "Favorite_userId_lookId_key" ON "Favorite"("userId", "lookId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Favorite_userId_productId_key" ON "Favorite"("userId", "productId");
+CREATE UNIQUE INDEX IF NOT EXISTS "Favorite_userId_productId_key" ON "Favorite"("userId", "productId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Follow_followerId_followingId_key" ON "Follow"("followerId", "followingId");
+CREATE UNIQUE INDEX IF NOT EXISTS "Follow_followerId_followingId_key" ON "Follow"("followerId", "followingId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "ConversationParticipant_conversationId_userId_key" ON "ConversationParticipant"("conversationId", "userId");
+CREATE UNIQUE INDEX IF NOT EXISTS "ConversationParticipant_conversationId_userId_key" ON "ConversationParticipant"("conversationId", "userId");
 
 -- CreateIndex
-CREATE INDEX "Message_conversationId_createdAt_idx" ON "Message"("conversationId", "createdAt");
+CREATE INDEX IF NOT EXISTS "Message_conversationId_createdAt_idx" ON "Message"("conversationId", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "_LookToProduct_B_index" ON "_LookToProduct"("B");
+CREATE INDEX IF NOT EXISTS "_LookToProduct_B_index" ON "_LookToProduct"("B");
 
 -- AddForeignKey
 ALTER TABLE "Product" ADD CONSTRAINT "Product_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
