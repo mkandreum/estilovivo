@@ -240,11 +240,10 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                   </button>
                   <button
                     onClick={() => setFilterPanelOpen(!filterPanelOpen)}
-                    className={`p-2 rounded-full border transition ${
-                      filterPanelOpen || seasonFilter !== 'all' || sortBy !== 'recent'
+                    className={`p-2 rounded-full border transition ${filterPanelOpen || seasonFilter !== 'all' || sortBy !== 'recent'
                         ? 'bg-primary/10 border-primary/20 text-primary'
                         : 'bg-gray-50 border-gray-100 text-gray-600 hover:bg-gray-100'
-                    }`}
+                      }`}
                   >
                     <SlidersHorizontal size={20} />
                   </button>
@@ -261,11 +260,10 @@ const Wardrobe: React.FC<WardrobeProps> = ({
               <button
                 key={view}
                 onClick={() => setActiveView(view)}
-                className={`flex-1 py-2 rounded-xl transition-all duration-300 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-1 ${
-                  activeView === view
+                className={`flex-1 py-2 rounded-xl transition-all duration-300 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-1 ${activeView === view
                     ? 'bg-white text-primary shadow-sm'
                     : 'text-gray-400 hover:text-gray-600'
-                }`}
+                  }`}
               >
                 {view === 'closet' && <><Shirt size={14} /> Armario</>}
                 {view === 'sales' && <><ShoppingBag size={14} /> Ventas</>}
@@ -300,11 +298,10 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                 <button
                   key={s.id}
                   onClick={() => setSeasonFilter(s.id)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
-                    seasonFilter === s.id
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${seasonFilter === s.id
                       ? 'bg-primary text-white'
                       : 'bg-gray-100 text-gray-500'
-                  }`}
+                    }`}
                 >
                   {s.label}
                 </button>
@@ -322,11 +319,10 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                 <button
                   key={s.id}
                   onClick={() => setSortBy(s.id)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
-                    sortBy === s.id
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${sortBy === s.id
                       ? 'bg-primary text-white'
                       : 'bg-gray-100 text-gray-500'
-                  }`}
+                    }`}
                 >
                   {s.label}
                 </button>
@@ -345,11 +341,10 @@ const Wardrobe: React.FC<WardrobeProps> = ({
               <button
                 key={cat.id}
                 onClick={() => setFilter(cat.id)}
-                className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${
-                  filter === cat.id
+                className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${filter === cat.id
                     ? 'bg-primary text-white border-primary shadow-md shadow-primary/20'
                     : 'bg-white text-gray-500 border-gray-200'
-                }`}
+                  }`}
               >
                 {cat.label}
               </button>
@@ -401,14 +396,13 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                   <img
                     src={garment.imageUrl}
                     alt={garment.name || garment.type}
-                    className={`w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ${
-                      garment.forSale ? 'opacity-70 grayscale-[0.5]' : ''
-                    }`}
+                    className={`w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ${garment.forSale ? 'opacity-70 grayscale-[0.5]' : ''
+                      }`}
                   />
                   {!garment.forSale && (
                     <button
-                      onClick={() => onRemoveGarment(garment.id)}
-                      className="absolute top-2 left-2 bg-white/80 p-1.5 rounded-full text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => { e.stopPropagation(); onRemoveGarment(garment.id); }}
+                      className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm p-1.5 rounded-full text-red-500 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow-sm"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -531,110 +525,108 @@ const Wardrobe: React.FC<WardrobeProps> = ({
             </div>
 
             <div className="overflow-y-auto flex-1 px-6 space-y-4">
-            {/* Image Upload */}
-            <div>
-              {!newImage ? (
-                <label className="w-full aspect-[4/3] bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
-                  <Camera size={40} className="text-gray-300 mb-2" />
-                  <span className="text-sm text-gray-500 font-medium">Subir foto</span>
-                  <span className="text-xs text-gray-300 mt-1">JPG, PNG hasta 10MB</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
-                </label>
-              ) : (
-                <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden">
-                  <img src={newImage} className="w-full h-full object-cover" />
-                  <button
-                    onClick={() => { setNewImage(null); setNewFile(null); }}
-                    className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full"
-                  >
-                    <X size={16} />
-                  </button>
+              {/* Image Upload */}
+              <div>
+                {!newImage ? (
+                  <label className="w-full aspect-[4/3] bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
+                    <Camera size={40} className="text-gray-300 mb-2" />
+                    <span className="text-sm text-gray-500 font-medium">Subir foto</span>
+                    <span className="text-xs text-gray-300 mt-1">JPG, PNG hasta 10MB</span>
+                    <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+                  </label>
+                ) : (
+                  <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden">
+                    <img src={newImage} className="w-full h-full object-cover" />
+                    <button
+                      onClick={() => { setNewImage(null); setNewFile(null); }}
+                      className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Name */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">Nombre</label>
+                <input
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  placeholder="Ej: Camiseta rayas azul"
+                  className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">Categoría</label>
+                <div className="flex gap-2 flex-wrap">
+                  {CATEGORIES.filter(c => c.id !== 'all').map(cat => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setNewCategory(cat.id)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${newCategory === cat.id
+                          ? 'bg-primary text-white'
+                          : 'bg-gray-100 text-gray-500'
+                        }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
                 </div>
-              )}
-            </div>
-
-            {/* Name */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1.5">Nombre</label>
-              <input
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
-                placeholder="Ej: Camiseta rayas azul"
-                className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-
-            {/* Category */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1.5">Categoría</label>
-              <div className="flex gap-2 flex-wrap">
-                {CATEGORIES.filter(c => c.id !== 'all').map(cat => (
-                  <button
-                    key={cat.id}
-                    onClick={() => setNewCategory(cat.id)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
-                      newCategory === cat.id
-                        ? 'bg-primary text-white'
-                        : 'bg-gray-100 text-gray-500'
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
               </div>
-            </div>
 
-            {/* Color & Brand */}
-            <div className="grid grid-cols-2 gap-3">
+              {/* Color & Brand */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1.5">Color</label>
+                  <input
+                    value={newColor}
+                    onChange={e => setNewColor(e.target.value)}
+                    placeholder="Ej: azul"
+                    className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1.5">Marca</label>
+                  <input
+                    value={newBrand}
+                    onChange={e => setNewBrand(e.target.value)}
+                    placeholder="Opcional"
+                    className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+              </div>
+
+              {/* Season */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1.5">Color</label>
-                <input
-                  value={newColor}
-                  onChange={e => setNewColor(e.target.value)}
-                  placeholder="Ej: azul"
-                  className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-                />
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">Temporada</label>
+                <div className="flex gap-2 flex-wrap">
+                  {SEASONS.map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => setNewSeason(s.id as any)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${newSeason === s.id
+                          ? 'bg-primary text-white'
+                          : 'bg-gray-100 text-gray-500'
+                        }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1.5">Marca</label>
-                <input
-                  value={newBrand}
-                  onChange={e => setNewBrand(e.target.value)}
-                  placeholder="Opcional"
-                  className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-                />
-              </div>
-            </div>
-
-            {/* Season */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1.5">Temporada</label>
-              <div className="flex gap-2 flex-wrap">
-                {SEASONS.map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => setNewSeason(s.id as any)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
-                      newSeason === s.id
-                        ? 'bg-primary text-white'
-                        : 'bg-gray-100 text-gray-500'
-                    }`}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            </div>
             </div>
 
             <div className="p-6 pt-4 flex-shrink-0">
-            <button
-              disabled={!newImage}
-              onClick={confirmAdd}
-              className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl transition-colors"
-            >
-              Añadir al Armario
-            </button>
+              <button
+                disabled={!newImage}
+                onClick={confirmAdd}
+                className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl transition-colors"
+              >
+                Añadir al Armario
+              </button>
             </div>
           </div>
         </div>
@@ -728,11 +720,10 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                         <button
                           key={c}
                           onClick={() => setSaleCondition(c)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-medium capitalize transition ${
-                            saleCondition === c
+                          className={`px-3 py-1.5 rounded-full text-xs font-medium capitalize transition ${saleCondition === c
                               ? 'bg-emerald-500 text-white'
                               : 'bg-gray-100 text-gray-500'
-                          }`}
+                            }`}
                         >
                           {c}
                         </button>

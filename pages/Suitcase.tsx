@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, CloudSun, CheckSquare, Plus, ArrowRight, Trash2, MapPin, ArrowLeft, X } from 'lucide-react';
+import { Calendar, CloudSun, CheckSquare, Plus, ArrowRight, Trash2, MapPin, ArrowLeft, X, Shirt } from 'lucide-react';
 import { Garment, Trip, TripItem } from '../types';
 import DateRangePicker from '../components/DateRangePicker';
 
@@ -17,11 +17,11 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
     const [activeTripId, setActiveTripId] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
 
-    // Form State for New Trip
+    // Form State for New Trip — dates are ISO strings like "2026-02-16"
     const [newTripForm, setNewTripForm] = useState({
         destination: '',
-        dateStart: null as Date | null,
-        dateEnd: null as Date | null,
+        dateStart: '' as string,
+        dateEnd: '' as string,
         garmentIds: [] as string[]
     });
 
@@ -48,7 +48,8 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
     const handleCreateTrip = () => {
         if (!newTripForm.destination || !newTripForm.dateStart) return;
 
-        const formatDate = (date: Date) => {
+        const formatDateStr = (isoStr: string) => {
+            const date = new Date(isoStr + 'T12:00:00');
             const formatter = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' });
             return formatter.format(date);
         };
@@ -58,8 +59,8 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
         const newTrip: Trip = {
             id: `t-${Date.now()}`,
             destination: newTripForm.destination,
-            dateStart: formatDate(newTripForm.dateStart),
-            dateEnd: newTripForm.dateEnd ? formatDate(newTripForm.dateEnd) : formatDate(newTripForm.dateStart),
+            dateStart: formatDateStr(newTripForm.dateStart),
+            dateEnd: newTripForm.dateEnd ? formatDateStr(newTripForm.dateEnd) : formatDateStr(newTripForm.dateStart),
             items: [
                 { id: `i-${Date.now()}-1`, label: 'Documentación', checked: false, isEssential: true },
                 { id: `i-${Date.now()}-2`, label: 'Neceser básico', checked: false, isEssential: true },
@@ -68,7 +69,7 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
         };
 
         onAddTrip(newTrip);
-        setNewTripForm({ destination: '', dateStart: null, dateEnd: null, garmentIds: [] });
+        setNewTripForm({ destination: '', dateStart: '', dateEnd: '', garmentIds: [] });
         setIsCreating(false);
         setActiveTripId(newTrip.id);
     };
@@ -207,15 +208,15 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
     // --- RENDER VIEW: CREATE TRIP ---
     if (isCreating) {
         return (
-            <div className={`h-full flex flex-col ${isEmbedded ? 'px-6' : 'p-6 pb-24 bg-white'}`}>
-                <div className="flex items-center mb-6 mt-4">
+            <div className={`h-full flex flex-col ${isEmbedded ? 'px-6' : 'bg-white'}`}>
+                <div className="flex items-center mb-4 mt-4 px-6">
                     <button onClick={() => setIsCreating(false)} className="mr-4 text-gray-500 hover:bg-gray-100 p-1 rounded-full">
                         <ArrowLeft size={24} />
                     </button>
                     <h1 className="text-xl font-bold text-gray-800">Nuevo Viaje</h1>
                 </div>
 
-                <div className="space-y-4 overflow-y-auto no-scrollbar flex-1">
+                <div className="space-y-4 overflow-y-auto flex-1 px-6 pb-4" style={{ scrollbarWidth: 'thin' }}>
                     <div>
                         <label className="block text-sm font-bold text-gray-700 mb-2">Destino</label>
                         <input
@@ -240,10 +241,10 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
                         <label className="block text-sm font-bold text-gray-700 mb-2">Prendas para el viaje</label>
                         {garments.length === 0 ? (
                             <div className="text-sm text-gray-500 bg-gray-50 border border-dashed border-gray-200 rounded-2xl p-4">
-                                Añade prendas en tu armario para seleccionarlas aqui.
+                                Añade prendas en tu armario para seleccionarlas aquí.
                             </div>
                         ) : (
-                            <div className="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto no-scrollbar pr-1">
+                            <div className="grid grid-cols-2 gap-3">
                                 {garments.map(garment => {
                                     const isSelected = newTripForm.garmentIds.includes(garment.id);
                                     return (
@@ -251,10 +252,15 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
                                             key={garment.id}
                                             type="button"
                                             onClick={() => toggleNewTripGarment(garment.id)}
-                                            className={`text-left rounded-2xl border p-2 transition-all ${isSelected ? 'border-primary bg-primary/5' : 'border-gray-200 bg-white'}`}
+                                            className={`text-left rounded-2xl border p-2 transition-all ${isSelected ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-gray-200 bg-white'}`}
                                         >
-                                            <div className="aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 mb-2">
+                                            <div className="aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 mb-2 relative">
                                                 <img src={garment.imageUrl} alt={garment.name} className="w-full h-full object-cover" />
+                                                {isSelected && (
+                                                    <div className="absolute top-1.5 right-1.5 bg-primary text-white rounded-full p-0.5">
+                                                        <CheckSquare size={14} />
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className="text-sm font-semibold text-gray-800 truncate">{garment.name}</div>
                                             <div className="text-xs text-gray-400 truncate">{garment.type}</div>
@@ -264,16 +270,21 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
                             </div>
                         )}
                     </div>
-
                 </div>
 
-                <button
-                    disabled={!newTripForm.destination}
-                    onClick={handleCreateTrip}
-                    className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl shadow-lg mt-6 mb-20 transition-colors flex-shrink-0"
-                >
-                    Crear Maleta
-                </button>
+                {/* Fixed bottom button — sits right above the nav bar */}
+                <div className="flex-shrink-0 px-6 pb-24 pt-3 bg-white border-t border-gray-100">
+                    <button
+                        disabled={!newTripForm.destination || !newTripForm.dateStart}
+                        onClick={handleCreateTrip}
+                        className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl shadow-lg shadow-primary/30 transition-colors"
+                    >
+                        Crear Maleta
+                    </button>
+                    {newTripForm.garmentIds.length > 0 && (
+                        <p className="text-center text-xs text-gray-400 mt-2">{newTripForm.garmentIds.length} prendas seleccionadas</p>
+                    )}
+                </div>
             </div>
         );
     }
@@ -371,60 +382,100 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
 
                     <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 mt-6">
                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="font-bold text-gray-800">Prendas seleccionadas</h3>
+                            <h3 className="font-bold text-gray-800 flex items-center">
+                                <Shirt size={18} className="mr-2 text-primary" />
+                                Prendas seleccionadas
+                            </h3>
                             <button
-                                onClick={() => setIsEditingGarments(!isEditingGarments)}
-                                className="text-xs font-bold text-primary"
+                                onClick={() => setIsEditingGarments(true)}
+                                className="text-xs font-bold text-primary bg-primary/10 px-3 py-1.5 rounded-full"
                             >
-                                {isEditingGarments ? 'Cancelar' : 'Editar'}
+                                Editar
                             </button>
                         </div>
 
-                        {isEditingGarments ? (
-                            <>
-                                <div className="grid grid-cols-2 gap-3 max-h-56 overflow-y-auto no-scrollbar pr-1">
-                                    {garments.map(garment => {
-                                        const isSelected = editedGarmentIds.includes(garment.id);
-                                        return (
-                                            <button
-                                                key={garment.id}
-                                                type="button"
-                                                onClick={() => toggleEditGarment(garment.id)}
-                                                className={`text-left rounded-2xl border p-2 transition-all ${isSelected ? 'border-primary bg-primary/5' : 'border-gray-200 bg-white'}`}
-                                            >
-                                                <div className="aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 mb-2">
-                                                    <img src={garment.imageUrl} alt={garment.name} className="w-full h-full object-cover" />
-                                                </div>
-                                                <div className="text-sm font-semibold text-gray-800 truncate">{garment.name}</div>
-                                                <div className="text-xs text-gray-400 truncate">{garment.type}</div>
-                                            </button>
-                                        );
-                                    })}
+                        <div className="grid grid-cols-2 gap-3">
+                            {(activeTrip.garments || []).length === 0 && (
+                                <div className="col-span-2 text-center py-6">
+                                    <Shirt size={32} className="mx-auto text-gray-200 mb-2" />
+                                    <p className="text-sm text-gray-400">No hay prendas seleccionadas</p>
+                                    <button onClick={() => setIsEditingGarments(true)} className="text-xs text-primary font-bold mt-2">Añadir prendas</button>
                                 </div>
-                                <button
-                                    onClick={handleSaveGarments}
-                                    className="mt-4 w-full bg-primary text-white font-bold py-3 rounded-2xl"
-                                >
-                                    Guardar prendas
-                                </button>
-                            </>
-                        ) : (
-                            <div className="grid grid-cols-2 gap-3">
-                                {(activeTrip.garments || []).length === 0 && (
-                                    <div className="text-sm text-gray-500">No hay prendas seleccionadas.</div>
-                                )}
-                                {(activeTrip.garments || []).map(garment => (
-                                    <div key={garment.id} className="rounded-2xl border border-gray-200 p-2">
-                                        <div className="aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 mb-2">
-                                            <img src={garment.imageUrl} alt={garment.name} className="w-full h-full object-cover" />
-                                        </div>
-                                        <div className="text-sm font-semibold text-gray-800 truncate">{garment.name}</div>
-                                        <div className="text-xs text-gray-400 truncate">{garment.type}</div>
+                            )}
+                            {(activeTrip.garments || []).map(garment => (
+                                <div key={garment.id} className="rounded-2xl border border-gray-200 p-2">
+                                    <div className="aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 mb-2">
+                                        <img src={garment.imageUrl} alt={garment.name} className="w-full h-full object-cover" />
                                     </div>
-                                ))}
-                            </div>
-                        )}
+                                    <div className="text-sm font-semibold text-gray-800 truncate">{garment.name}</div>
+                                    <div className="text-xs text-gray-400 truncate">{garment.type}</div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
+
+                    {/* EDIT GARMENTS MODAL — proper fullscreen overlay */}
+                    {isEditingGarments && (
+                        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center">
+                            <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl animate-fade-in-up flex flex-col" style={{ maxHeight: '85vh' }}>
+                                {/* Header */}
+                                <div className="flex justify-between items-center p-6 border-b border-gray-100 flex-shrink-0">
+                                    <div>
+                                        <h3 className="text-lg font-bold text-gray-800">Editar Prendas</h3>
+                                        <p className="text-xs text-gray-400 mt-0.5">{editedGarmentIds.length} seleccionadas</p>
+                                    </div>
+                                    <button onClick={() => { setIsEditingGarments(false); setEditedGarmentIds(activeTrip.garments?.map(g => g.id) || []); }}>
+                                        <X size={24} className="text-gray-400" />
+                                    </button>
+                                </div>
+
+                                {/* Scrollable garment grid */}
+                                <div className="flex-1 overflow-y-auto p-6" style={{ scrollbarWidth: 'thin' }}>
+                                    {garments.length === 0 ? (
+                                        <div className="text-center py-10">
+                                            <Shirt size={40} className="mx-auto text-gray-200 mb-3" />
+                                            <p className="text-gray-400 text-sm">No tienes prendas en tu armario</p>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {garments.map(garment => {
+                                                const isSelected = editedGarmentIds.includes(garment.id);
+                                                return (
+                                                    <button
+                                                        key={garment.id}
+                                                        type="button"
+                                                        onClick={() => toggleEditGarment(garment.id)}
+                                                        className={`text-left rounded-2xl border p-2 transition-all ${isSelected ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-gray-200 bg-white'}`}
+                                                    >
+                                                        <div className="aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 mb-2 relative">
+                                                            <img src={garment.imageUrl} alt={garment.name} className="w-full h-full object-cover" />
+                                                            {isSelected && (
+                                                                <div className="absolute top-1.5 right-1.5 bg-primary text-white rounded-full p-0.5">
+                                                                    <CheckSquare size={14} />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-sm font-semibold text-gray-800 truncate">{garment.name}</div>
+                                                        <div className="text-xs text-gray-400 truncate">{garment.type}</div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Footer with save button */}
+                                <div className="flex-shrink-0 p-6 pt-4 border-t border-gray-100">
+                                    <button
+                                        onClick={handleSaveGarments}
+                                        className="w-full bg-primary text-white font-bold py-4 rounded-2xl shadow-lg shadow-primary/30 transition-colors"
+                                    >
+                                        Guardar prendas ({editedGarmentIds.length})
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
