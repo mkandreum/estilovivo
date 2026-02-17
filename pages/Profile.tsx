@@ -681,9 +681,6 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
                           try {
                             const updated = await api.updateProfile({ gender: option.id as any });
                             onUpdateUser(updated);
-                            window.dispatchEvent(new CustomEvent('themeChanged', {
-                              detail: { message: `Tema actualizado` }
-                            }));
                           } catch (e) {
                             console.warn('Error saving gender:', e);
                             onUpdateUser({ ...user, gender: option.id as any });

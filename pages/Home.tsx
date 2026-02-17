@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { UserState, MoodOption, Look, PlannerEntry, Garment } from '../types';
 import { Sun, Sparkles, Briefcase, ChevronRight, RefreshCcw, Shirt, TrendingUp, AlertTriangle, Heart } from 'lucide-react';
 
@@ -26,27 +26,6 @@ const getMoods = (gender?: string): MoodOption[] => {
 
 const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate, plannerEntries, looks, garments }) => {
   const moods = getMoods(user?.gender);
-  const [showNotification, setShowNotification] = useState(false);
-  const [notificationMessage, setNotificationMessage] = useState('');
-
-  // Auto-hide notification
-  useEffect(() => {
-    if (showNotification) {
-      const timer = setTimeout(() => setShowNotification(false), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [showNotification]);
-
-  // Listen for theme changes from Profile
-  useEffect(() => {
-    const handleThemeChange = (event: any) => {
-      setNotificationMessage(event.detail.message);
-      setShowNotification(true);
-    };
-    window.addEventListener('themeChanged', handleThemeChange);
-    return () => window.removeEventListener('themeChanged', handleThemeChange);
-  }, []);
-
   // Real stats
   const mostUsedGarment = useMemo(
     () => [...garments].sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0))[0],
@@ -107,15 +86,6 @@ const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate, plannerEntr
 
   return (
     <div className="p-6 space-y-8 animate-fade-in pb-28">
-      {/* Notification Banner */}
-      {showNotification && (
-        <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center pointer-events-none animate-fadeIn pt-4">
-          <div className="bg-primary text-white px-6 py-3 rounded-2xl shadow-lg backdrop-blur-sm pointer-events-auto max-w-xs">
-            <p className="text-sm font-medium text-center">{notificationMessage}</p>
-          </div>
-        </div>
-      )}
-
       {/* Header & Welcome */}
       <header className="space-y-2 mt-4">
         <h1 className="text-3xl font-bold text-gray-800 tracking-tight">

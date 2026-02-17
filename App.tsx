@@ -13,46 +13,6 @@ import { api } from './services/api';
 import { useLocalStorage, loadFromLocalStorage } from './hooks/useLocalStorage';
 import { useNotification } from './src/context/NotificationContext';
 
-// Theme configurations per gender
-const THEMES = {
-  female: {
-    primary: '#ec4899',
-    primaryLight: '#fbcfe8',
-    primaryDark: '#be185d',
-    accent: '#14b8a6',
-    secondary: '#f97316',
-    name: 'Rosa Femenino'
-  },
-  male: {
-    primary: '#1e40af',
-    primaryLight: '#bfdbfe',
-    primaryDark: '#001a4d',
-    accent: '#334155',
-    secondary: '#1f2937',
-    name: 'Azul Masculino'
-  },
-  other: {
-    primary: '#16a34a',
-    primaryLight: '#dcfce7',
-    primaryDark: '#14532d',
-    accent: '#8b5cf6',
-    secondary: '#6366f1',
-    name: 'Verde Neutral'
-  }
-};
-
-const applyTheme = (gender?: string) => {
-  const genderKey = (gender as keyof typeof THEMES) || 'female';
-  const theme = THEMES[genderKey] || THEMES.female;
-  
-  const root = document.documentElement;
-  root.style.setProperty('--color-primary', theme.primary);
-  root.style.setProperty('--color-primary-light', theme.primaryLight);
-  root.style.setProperty('--color-primary-dark', theme.primaryDark);
-  root.style.setProperty('--color-accent', theme.accent);
-  root.style.setProperty('--color-secondary', theme.secondary);
-};
-
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [isLoading, setIsLoading] = useState(true);
@@ -144,16 +104,6 @@ const App: React.FC = () => {
     localStorage.setItem('beyour_user', JSON.stringify(userData));
     window.location.reload();
   };
-
-  // Apply theme when user changes
-  useEffect(() => {
-    if (user?.gender) {
-      applyTheme(user.gender);
-    } else {
-      // Default theme if no user
-      applyTheme('female');
-    }
-  }, [user]);
 
   if (isLoading) {
     return (
