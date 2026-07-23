@@ -1,0 +1,480 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Mail, Lock, User, ArrowRight, Sparkles, AlertCircle, Calendar, Languages, Globe, Eye, EyeOff } from 'lucide-react';
+import { api } from '../services/api';
+import { useLanguage } from '../src/context/LanguageContext';
+import { languages, dialects } from '../src/utils/translations';
+import Logo from '../components/Logo';
+
+interface AuthPageProps {
+    onAuthSuccess: (user: any, rememberMe?: boolean) => void;
+}
+
+const AuthPage: React.FC<AuthPageProps> = ({ onAuthSuccess }) => {
+    const [isLogin, setIsLogin] = useState(true);
+    const [view, setView] = useState<'auth' | 'forgot' | 'reset'>('auth');
+    const [email, setEmail] = useState('');
+    const [savedEmail, setSavedEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [rememberMe, setRememberMe] = useState(true);
+    const [name, setName] = useState('');
+    const [gender, setGender] = useState<'male' | 'female' | 'other'>('other');
+    const [birthDate, setBirthDate] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [successMessage, setSuccessMessage] = useState<string | null>(null);
+    const [isUnverified, setIsUnverified] = useState(false);
+    const [isResending, setIsResending] = useState(false);
+    const [resetToken, setResetToken] = useState<string | null>(null);
+    const { t, language, setLanguage, dialect, setDialect } = useLanguage();
+    const [showLangMenu, setShowLangMenu] = useState(false);
+
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        const type = urlParams.get('type');
+        const verifyToken = urlParams.get('verifyToken');
+        const errorParam = urlParams.get('error');
+
+        if (errorParam === 'invalid_token') {
+            setError('El enlace de recuperación ha expirado o no es válido. Solicita uno nuevo.');
+        } else if (errorParam === 'server_error') {
+            setError('Error del servidor. Intenta de nuevo más tarde.');
+        }
+
+        if (token && (type === 'reset' || (!type && urlParams.has('reset')))) {
+            setResetToken(token);
+            setView('reset');
+        } else if (verifyToken || (token && (type === 'verify' || urlParams.has('verify')))) {
+            const t = verifyToken || token;
+            (async () => {
+                try {
+                    await api.verifyEmail(t);
+                    if (mountedRef.current) {
+                        setSuccessMessage('Tu correo ha sido verificado correctamente.');
+                        setTimeout(() => {
+                            if (mountedRef.current) {
+                                setView('auth');
+                                window.history.replaceState({}, '', window.location.pathname);
+                            }
+                        }, 1800);
+                    }
+                } catch (err: any) {
+                    if (mountedRef.current) setError(err.message || 'Error verificando el correo');
+                }
+            })();
+        }
+
+        const storedEmail = localStorage.getItem('beyour_saved_email');
+        if (storedEmail) {
+            setSavedEmail(storedEmail);
+            if (!email) setEmail(storedEmail);
+        }
+
+        const storedRemember = localStorage.getItem('beyour_remember_me');
+        setRememberMe(storedRemember !== 'false');
+
+        return () => { mountedRef.current = false; };
+    }, []);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsLoading(true);
+        setError(null);
+        setSuccessMessage(null);
+
+        try {
+            const normalizedEmail = email.trim().toLowerCase();
+
+            if (view === 'forgot') {
+                await api.forgotPassword(normalizedEmail);
+                setSuccessMessage(t('recoveryEmailSent'));
+                return;
+            }
+
+            if (view === 'reset' && resetToken) {
+                if (password !== confirmPassword) {
+                    throw new Error(t('passwordsDoNotMatch'));
+                }
+                await api.resetPassword({ token: resetToken, newPassword: password });
+                setSuccessMessage(t('passwordChangedSuccess'));
+                setTimeout(() => {
+                    setView('auth');
+                    window.history.replaceState({}, '', window.location.pathname);
+                }, 2000);
+                return;
+            }
+
+            if (isLogin) {
+                const data = await api.login({ email: normalizedEmail, password }, rememberMe);
+                localStorage.setItem('beyour_saved_email', normalizedEmail);
+                onAuthSuccess(data.user, rememberMe);
+            } else {
+                const data = await api.register({
+                    email: normalizedEmail,
+                    password,
+                    name,
+                    gender,
+                    birthDate: birthDate || undefined
+                }, rememberMe);
+                localStorage.setItem('beyour_saved_email', normalizedEmail);
+                if (data.requiresVerification) {
+                    setIsUnverified(true);
+                    setSuccessMessage('Por favor, revisa tu correo para verificar tu cuenta.');
+                } else {
+                    onAuthSuccess(data.user, rememberMe);
+                }
+            }
+        } catch (err: any) {
+            const msg = err?.message || '';
+            if (msg === 'emailNotVerified') {
+                setIsUnverified(true);
+                setError(t('emailNotVerifiedError'));
+            } else if (msg === 'User not found') {
+                setError(t('emailNotFound'));
+            } else if (msg === 'Invalid credentials') {
+                setError('Contraseña incorrecta.');
+            } else if (err?.name === 'TypeError' && msg.includes('fetch')) {
+                setError('No se pudo conectar con el servidor. Comprueba tu conexión.');
+            } else {
+                setError(msg || 'Ocurrió un error');
+            }
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleResendVerification = async () => {
+        setIsResending(true);
+        setError(null);
+        setSuccessMessage(null);
+        try {
+            await api.resendVerification(email);
+            setSuccessMessage('¡Correo de verificación reenviado!');
+        } catch (err: any) {
+            setError(err.message || 'Error al reenviar el correo');
+        } finally {
+            setIsResending(false);
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-[var(--bg-card)] flex flex-col items-center justify-center p-6 relative overflow-hidden">
+            {/* Background Decorative Elements */}
+            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-3xl" />
+            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-teal-500/5 rounded-full blur-3xl" />
+
+            {/* Language Selector */}
+            <div className="absolute top-6 right-6 z-50">
+                <button
+                    onClick={() => setShowLangMenu(!showLangMenu)}
+                    className="bg-[var(--bg-card)]/80 backdrop-blur-md border border-[var(--border-light)] p-3 rounded-2xl shadow-sm hover:shadow-md transition-all flex items-center gap-2"
+                >
+                    <Languages size={18} className="text-primary" />
+                    <span className="text-xs font-bold uppercase text-[var(--text-secondary)]">
+                        {languages.find(l => l.id === language)?.label}
+                        {language === 'es' && dialect !== 'none' && ` (${dialects.find(d => d.id === dialect)?.label})`}
+                    </span>
+                </button>
+
+                {showLangMenu && (
+                    <div className="absolute right-0 mt-2 w-48 bg-[var(--bg-card)] rounded-2xl shadow-xl border border-[var(--border-light)] p-2 animate-fade-in-down">
+                        <div className="p-2 border-b border-gray-50 mb-1 flex items-center gap-2">
+                            <Globe size={14} className="text-[var(--text-muted)]" />
+                            <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">{t('language')}</span>
+                        </div>
+                        <div className="max-h-48 overflow-y-auto">
+                            {languages.map(l => (
+                                <button
+                                    key={l.id}
+                                    onClick={() => {
+                                        setLanguage(l.id);
+                                        if (l.id !== 'es') setShowLangMenu(false);
+                                    }}
+                                    className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold transition-colors ${language === l.id ? 'bg-primary/10 text-primary' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'}`}
+                                >
+                                    {l.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {language === 'es' && (
+                            <div className="mt-2 pt-2 border-t border-gray-50">
+                                <span className="p-2 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest block">{t('dialect')}</span>
+                                {dialects.map(d => (
+                                    <button
+                                        key={d.id}
+                                        onClick={() => {
+                                            setDialect(d.id);
+                                            setShowLangMenu(false);
+                                        }}
+                                        className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold transition-colors ${dialect === d.id ? 'bg-primary/10 text-primary' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'}`}
+                                    >
+                                        {d.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            <div className="w-full max-w-md z-10">
+                <div className="text-center mb-10">
+                    <div className="flex justify-center mb-2">
+                        <Logo variant="horizontal" size={280} className="max-w-[min(100%,320px)]" />
+                    </div>
+                    {(view === 'forgot' || view === 'reset') && (
+                        <>
+                            <h1 className="text-2xl font-black text-[var(--text-primary)] tracking-tight mb-2 mt-6">
+                                {view === 'forgot' ? t('forgotPassword') : t('resetPassword')}
+                            </h1>
+                            <p className="text-[var(--text-secondary)] font-medium text-sm">
+                                {view === 'forgot'
+                                    ? 'Introduce tu email para recuperar tu acceso'
+                                    : 'Crea una contraseña nueva y segura'}
+                            </p>
+                        </>
+                    )}
+                </div>
+
+                <div className="bg-[var(--bg-card)]/80 backdrop-blur-xl rounded-[2.5rem] p-8 shadow-2xl shadow-gray-200/50 border border-[var(--border-light)]">
+                    {view === 'auth' && (
+                        <div className="flex bg-[var(--border-light)] rounded-2xl p-1 mb-8">
+                            <button
+                                onClick={() => setIsLogin(true)}
+                                className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${isLogin ? 'bg-[var(--bg-card)] text-primary shadow-sm' : 'text-[var(--text-muted)]'}`}
+                            >
+                                {t('login')}
+                            </button>
+                            <button
+                                onClick={() => setIsLogin(false)}
+                                className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${!isLogin ? 'bg-[var(--bg-card)] text-primary shadow-sm' : 'text-[var(--text-muted)]'}`}
+                            >
+                                {t('register')}
+                            </button>
+                        </div>
+                    )}
+
+                    <form onSubmit={handleSubmit} className="space-y-5">
+                        {view === 'auth' ? (
+                            <>
+                                {!isLogin && (
+                                    <>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">{t('name')}</label>
+                                            <div className="relative group">
+                                                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={20} />
+                                                <input
+                                                    type="text"
+                                                    required
+                                                    value={name}
+                                                    onChange={(e) => setName(e.target.value)}
+                                                    className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium text-[var(--text-primary)]"
+                                                    placeholder={t('name')}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">{t('birthDate')}</label>
+                                            <div className="relative group">
+                                                <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={20} />
+                                                <input
+                                                    type="date"
+                                                    value={birthDate}
+                                                    onChange={(e) => setBirthDate(e.target.value)}
+                                                    className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium text-[var(--text-primary)]"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">{t('gender')}</label>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {(['female', 'male', 'other'] as const).map(option => (
+                                                    <button
+                                                        key={option}
+                                                        type="button"
+                                                        onClick={() => setGender(option)}
+                                                        className={`py-3 rounded-xl text-sm font-bold transition-all ${gender === option ? 'bg-primary text-white shadow-lg' : 'bg-gray-50 text-[var(--text-secondary)] hover:bg-gray-100'}`}
+                                                    >
+                                                        {t(option as any)}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">{t('email')}</label>
+                                    <div className="relative group">
+                                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={20} />
+                                        <input
+                                            type="email"
+                                            required
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value.trim())}
+                                            autoComplete="email"
+                                            autoCapitalize="none"
+                                            className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium text-[var(--text-primary)]"
+                                            placeholder={savedEmail || "ejemplo@email.com"}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">{t('password')}</label>
+                                        {isLogin && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setView('forgot')}
+                                                className="text-[10px] font-bold text-primary hover:text-teal-700 transition-colors uppercase tracking-widest"
+                                            >
+                                                {t('forgotPassword')}
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="relative group">
+                                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={20} />
+                                        <input
+                                            type={showPassword ? "text" : "password"}
+                                            required
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            autoComplete={isLogin ? "current-password" : "new-password"}
+                                            className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-12 outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium text-[var(--text-primary)]"
+                                            placeholder="••••••••"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                            className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-primary transition-colors p-1"
+                                        >
+                                            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                                        </button>
+                                    </div>
+                                    {view === 'auth' && (
+                                        <div className="mt-2">
+                                            <label className="flex items-center gap-3 text-sm text-[var(--text-secondary)]">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={rememberMe}
+                                                    onChange={(e) => setRememberMe(e.target.checked)}
+                                                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                                />
+                                                <span>Recordarme en este dispositivo</span>
+                                            </label>
+                                            <p className="text-xs text-[var(--text-muted)] mt-1">Mantén tu email y sesión guardados para iniciar más rápido.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        ) : view === 'forgot' ? (
+                            <div className="space-y-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">{t('email')}</label>
+                                    <div className="relative group">
+                                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={20} />
+                                        <input
+                                            type="email"
+                                            required
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value.trim())}
+                                            autoComplete="email"
+                                            autoCapitalize="none"
+                                            className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium text-[var(--text-primary)]"
+                                            placeholder={savedEmail || "ejemplo@email.com"}
+                                        />
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setView('auth')}
+                                    className="text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors uppercase tracking-widest"
+                                >
+                                    {t('back')}
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">{t('newPassword')}</label>
+                                    <div className="relative group">
+                                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={20} />
+                                        <input
+                                            type="password"
+                                            required
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium text-[var(--text-primary)]"
+                                            placeholder="••••••••"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">{t('confirmPassword')}</label>
+                                    <div className="relative group">
+                                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={20} />
+                                        <input
+                                            type="password"
+                                            required
+                                            value={confirmPassword}
+                                            onChange={(e) => setConfirmPassword(e.target.value)}
+                                            className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium text-[var(--text-primary)]"
+                                            placeholder="••••••••"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {error && (
+                            <div className="flex items-center space-x-2 p-4 bg-red-50 text-red-500 rounded-2xl animate-fade-in">
+                                <AlertCircle size={18} />
+                                <span className="text-xs font-bold">{error}</span>
+                            </div>
+                        )}
+
+                        {successMessage && (
+                            <div className="flex items-center space-x-2 p-4 bg-green-50 text-green-600 rounded-2xl animate-fade-in">
+                                <div className="w-5 h-5 bg-green-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold">✓</div>
+                                <span className="text-xs font-bold">{successMessage}</span>
+                            </div>
+                        )}
+
+                        <button
+                            type="submit"
+                            disabled={isLoading}
+                            className="w-full bg-primary hover:bg-teal-700 text-white font-black py-4 rounded-2xl shadow-xl shadow-primary/20 transform active:scale-95 transition-all flex items-center justify-center space-x-2 mt-4"
+                        >
+                            {isLoading ? (
+                                <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : (
+                                <>
+                                    <span>
+                                        {view === 'forgot' ? t('continueAction') :
+                                            view === 'reset' ? t('save') :
+                                                isLogin ? t('enterNow') : t('createAccount')}
+                                    </span>
+                                    <ArrowRight size={20} />
+                                </>
+                            )}
+                        </button>
+
+                        <p className="text-center text-[10px] text-[var(--text-muted)] mt-4">
+                            Al continuar aceptas nuestros{' '}
+                            <a href="/privacy" onClick={(e) => { e.preventDefault(); window.history.pushState({}, '', '/privacy'); window.location.reload() }} className="text-primary font-semibold hover:underline">Términos y Política de Privacidad</a>
+                        </p>
+                    </form>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default AuthPage;

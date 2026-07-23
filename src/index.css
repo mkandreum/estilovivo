@@ -1,0 +1,478 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   CROSS-BROWSER CSS RESET
+   Normalizes rendering across Chrome, Edge, Safari, Firefox, Android WebView
+   ============================================ */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    -webkit-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    height: -webkit-fill-available;
+    font-size: 16px;
+}
+
+body {
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    line-height: 1.5;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    overscroll-behavior: none;
+}
+
+img, picture, video, canvas, svg {
+    display: block;
+    max-width: 100%;
+}
+
+input, button, textarea, select {
+    font: inherit;
+    color: inherit;
+}
+
+button {
+    cursor: pointer;
+    background: none;
+    border: none;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+p, h1, h2, h3, h4, h5, h6 {
+    overflow-wrap: break-word;
+}
+
+#root {
+    isolation: isolate;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+}
+
+/* Prevent text selection on interactive elements */
+.no-select {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Ensure consistent tap highlighting */
+a, button, input, select, textarea, [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Fix iOS bounce */
+html, body {
+    overscroll-behavior-y: none;
+}
+
+/* ============================================
+   END CSS RESET
+   ============================================ */
+
+:root {
+    --color-primary: #ff4d94;
+    --color-primary-light: #ff85b3;
+    --color-primary-dark: #d6337a;
+    --color-accent: #14b8a6;
+    --color-secondary: #a78bfa;
+
+    /* Light mode surface colors */
+    --bg-base: #F8F9FA;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f3f4f6;
+    --bg-elevated: #ffffff;
+    --text-primary: #1f2937;
+    --text-secondary: #6b7280;
+    --text-muted: #9ca3af;
+    --border-light: #e5e7eb;
+    --border-subtle: #f3f4f6;
+    --overlay: rgba(0, 0, 0, 0.5);
+
+    /* Utility colors - Light mode */
+    --bg-purple-light: #f3e8ff;
+    --bg-purple-lighter: #faf5ff;
+    --bg-rose-light: #ffe4e6;
+    --bg-rose-lighter: #fff0f1;
+    --bg-emerald-light: #d1fae5;
+    --bg-blue-light: #dbeafe;
+    --bg-yellow-light: #fef3c7;
+    --text-purple-light: #6b21a8;
+    --text-rose-light: #be123c;
+    --text-emerald-light: #047857;
+    --text-blue-light: #0369a1;
+    --text-yellow-light: #b45309;
+    
+    /* Safe Areas for mobile notch/home bar */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+}
+
+.dark {
+    --bg-base: #0f172a;
+    --bg-card: #1e293b;
+    --bg-card-hover: #334155;
+    --bg-elevated: #1e293b;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --border-light: #334155;
+    --border-subtle: #1e293b;
+    --overlay: rgba(0, 0, 0, 0.7);
+
+    /* Utility colors - Dark mode */
+    --bg-purple-light: #3f1d56;
+    --bg-purple-lighter: #2d1445;
+    --bg-rose-light: #4a1d2e;
+    --bg-rose-lighter: #331423;
+    --bg-emerald-light: #1d3d34;
+    --bg-blue-light: #1d3a5c;
+    --bg-yellow-light: #3f2e1a;
+    --text-purple-light: #e9d5ff;
+    --text-rose-light: #fca5a5;
+    --text-emerald-light: #6ee7b7;
+    --text-blue-light: #7dd3fc;
+    --text-yellow-light: #fcd34d;
+}
+
+body {
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+*, *::before, *::after {
+    transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+}
+
+/* High contrast mode */
+.high-contrast {
+    --text-primary: #000000 !important;
+    --text-secondary: #1f2937 !important;
+    --bg-base: #ffffff !important;
+    --border-light: #9ca3af !important;
+}
+.dark.high-contrast {
+    --text-primary: #ffffff !important;
+    --text-secondary: #e2e8f0 !important;
+    --bg-base: #000000 !important;
+    --border-light: #64748b !important;
+}
+
+/* Font size */
+html { font-size: 16px; }
+html[style*="font-size: 14px"] .text-xs { font-size: 11px !important; }
+html[style*="font-size: 18px"] .text-xs { font-size: 13px !important; }
+
+/* Glass effect with fallback for browsers without color-mix() */
+.glass {
+    @apply backdrop-blur-md border;
+    background-color: rgba(255, 255, 255, 0.7);
+    border-color: rgba(229, 231, 235, 0.4);
+    background-color: color-mix(in srgb, var(--bg-card) 70%, transparent);
+    border-color: color-mix(in srgb, var(--border-light) 40%, transparent);
+}
+
+.glass-dark {
+    @apply backdrop-blur-xl;
+    background-color: rgba(15, 23, 42, 0.4);
+    border-color: rgba(51, 65, 85, 0.1);
+    background-color: color-mix(in srgb, var(--bg-base) 40%, transparent);
+    border-color: color-mix(in srgb, var(--border-light) 10%, transparent);
+}
+
+.vertical-text {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* Animations provide via CSS to keep index.html clean */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+@keyframes popIn { 0% { opacity: 0; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.05); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes slideInLeft { from { transform: translateX(-100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes slideOutRight { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100%); opacity: 0; } }
+@keyframes slideOutUp { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-100%); opacity: 0; } }
+@keyframes slideUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes pulseSoft { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+@keyframes shimmer { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
+@keyframes checkmark { 0% { transform: scale(0) rotate(-45deg); } 50% { transform: scale(1.2); } 100% { transform: scale(1) rotate(0deg); } }
+@keyframes staggerItem { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+.animate-fade-in { animation: fadeIn 0.3s ease-out both; }
+.animate-fade-in-up { animation: fadeInUp 0.35s ease-out both; }
+.animate-fade-in-down { animation: fadeInDown 0.35s ease-out both; }
+.animate-scale-in { animation: scaleIn 0.3s ease-out both; }
+.animate-pop-in { animation: popIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+.animate-spin { animation: spin 1s linear infinite; }
+.animate-bounce { animation: bounce 1s infinite; }
+.animate-slide-in-right { animation: slideInRight 0.3s ease-out both; }
+.animate-slide-in-left { animation: slideInLeft 0.3s ease-out both; }
+.animate-slide-out-right { animation: slideOutRight 0.3s ease-in both; }
+.animate-slide-out-up { animation: slideOutUp 0.3s ease-in both; }
+.animate-slide-up { animation: slideUp 0.4s ease-out both; }
+.animate-pulse-soft { animation: pulseSoft 2s ease-in-out infinite; }
+.animate-shimmer {
+    background: linear-gradient(90deg, var(--bg-card-hover) 25%, var(--border-light) 50%, var(--bg-card-hover) 75%);
+    background-size: 200px 100%;
+    animation: shimmer 1.5s infinite;
+}
+.animate-checkmark { animation: checkmark 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+.stagger-child {
+    animation: staggerItem 0.4s ease-out both;
+}
+.stagger-child:nth-child(1) { animation-delay: 0.05s; }
+.stagger-child:nth-child(2) { animation-delay: 0.1s; }
+.stagger-child:nth-child(3) { animation-delay: 0.15s; }
+.stagger-child:nth-child(4) { animation-delay: 0.2s; }
+.stagger-child:nth-child(5) { animation-delay: 0.25s; }
+.stagger-child:nth-child(n+6) { animation-delay: 0.3s; }
+
+/* Missing animation classes that are referenced in components */
+.animate-bounce-soft { animation: bounce 1.5s ease-in-out infinite; }
+.animate-slide-in-up { animation: slideUp 0.4s ease-out both; }
+
+/* Confetti burst */
+@keyframes confettiFall {
+    0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(120px) rotate(720deg); opacity: 0; }
+}
+@keyframes confettiDrift {
+    0% { transform: translateX(0) translateY(0) rotate(0deg); opacity: 1; }
+    100% { transform: translateX(30px) translateY(100px) rotate(540deg); opacity: 0; }
+}
+.animate-confetti-piece {
+    animation: confettiFall 1.2s ease-out forwards, confettiDrift 1.2s ease-in-out forwards;
+}
+
+/* Bounce-in for publish feedback */
+@keyframes bounceIn {
+    0% { transform: scale(0.3); opacity: 0; }
+    50% { transform: scale(1.08); }
+    70% { transform: scale(0.95); }
+    100% { transform: scale(1); opacity: 1; }
+}
+.animate-bounce-in { animation: bounceIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* XP float up */
+@keyframes xpFloatUp {
+    0% { transform: translateY(0) scale(1); opacity: 1; }
+    100% { transform: translateY(-60px) scale(1.3); opacity: 0; }
+}
+.animate-xp-float { animation: xpFloatUp 1.2s ease-out forwards; }
+
+/* Ciclo menstrual — animación ligera (GPU: transform + opacity) */
+@keyframes cycleDropPulse {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 0.82;
+    }
+    50% {
+        transform: scale(1.14);
+        opacity: 1;
+    }
+}
+
+@keyframes cycleDayGlow {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(192, 132, 168, 0.25);
+    }
+    50% {
+        box-shadow: 0 0 0 3px rgba(192, 132, 168, 0.12);
+    }
+}
+
+.cycle-drop-icon {
+    animation: cycleDropPulse 2.4s ease-in-out infinite;
+    will-change: transform, opacity;
+    transform-origin: center bottom;
+}
+
+.cycle-day-cell--active {
+    animation: cycleDayGlow 2.8s ease-in-out infinite;
+    will-change: box-shadow;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cycle-drop-icon,
+    .cycle-day-cell--active {
+        animation: none;
+    }
+}
+
+/* ============================================
+   GLOBAL DARK MODE OVERRIDES
+   Ensures ALL elements respond to .dark class
+   ============================================ */
+
+/* Base surfaces */
+.dark body,
+.dark #root {
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+}
+
+/* Common hardcoded patterns - override in dark mode */
+.dark .bg-white { background-color: var(--bg-card) !important; }
+.dark .bg-gray-50 { background-color: var(--bg-base) !important; }
+.dark .bg-gray-100 { background-color: var(--bg-card-hover) !important; }
+.dark .bg-gray-200 { background-color: var(--border-light) !important; }
+
+/* Text colors */
+.dark .text-gray-300 { color: var(--text-muted) !important; }
+.dark .text-gray-400 { color: var(--text-muted) !important; }
+.dark .text-gray-500 { color: var(--text-secondary) !important; }
+.dark .text-gray-600 { color: var(--text-secondary) !important; }
+.dark .text-gray-700 { color: var(--text-primary) !important; }
+.dark .text-gray-800 { color: var(--text-primary) !important; }
+.dark .text-gray-900 { color: var(--text-primary) !important; }
+.dark .text-black { color: var(--text-primary) !important; }
+
+/* Border colors */
+.dark .border-gray-100 { border-color: var(--border-light) !important; }
+.dark .border-gray-200 { border-color: var(--border-light) !important; }
+.dark .border-gray-300 { border-color: var(--border-light) !important; }
+
+/* Hover states */
+.dark .hover\:bg-gray-50:hover { background-color: var(--bg-card-hover) !important; }
+.dark .hover\:bg-gray-100:hover { background-color: var(--bg-card-hover) !important; }
+.dark .hover\:bg-gray-200:hover { background-color: var(--border-light) !important; }
+
+/* Focus rings */
+.dark .focus\:ring-gray-200:focus { --tw-ring-color: var(--border-light); }
+.dark .focus\:border-gray-300:focus { border-color: var(--border-light) !important; }
+
+/* Input fields */
+.dark input,
+.dark textarea,
+.dark select {
+    background-color: var(--bg-card);
+    color: var(--text-primary);
+    border-color: var(--border-light);
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+    color: var(--text-muted);
+}
+
+/* Scrollbar */
+.dark ::-webkit-scrollbar-track { background: var(--bg-base); }
+.dark ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+.dark ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* SVG icons inherit currentColor */
+.dark svg { color: inherit; }
+
+/* ============================================
+   PREMIUM MICRO-ANIMATIONS & INTERACTION SYSTEM
+   ============================================ */
+
+.btn-interactive {
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    will-change: transform, box-shadow;
+}
+
+.btn-interactive:hover {
+    transform: translateY(-1.5px) scale(1.02);
+}
+
+.btn-interactive:active {
+    transform: translateY(0.5px) scale(0.96);
+}
+
+.card-interactive {
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.2s ease;
+    will-change: transform, box-shadow;
+}
+
+.card-interactive:hover {
+    transform: translateY(-3px) scale(1.01);
+    box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.08), 0 4px 12px -4px rgba(255, 77, 148, 0.12);
+}
+
+.chip-interactive {
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s ease, border-color 0.15s ease;
+    will-change: transform;
+}
+
+.chip-interactive:hover {
+    transform: scale(1.04);
+}
+
+.chip-interactive:active {
+    transform: scale(0.95);
+}
+
+.glass-card {
+    background: color-mix(in srgb, var(--bg-card) 88%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid color-mix(in srgb, var(--border-light) 60%, transparent);
+}
+
+.glass-card-hover {
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.glass-card-hover:hover {
+    background: color-mix(in srgb, var(--bg-card) 96%, transparent);
+    border-color: var(--color-primary);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px -5px rgba(255, 77, 148, 0.15);
+}
+
+@keyframes pulseGlow {
+    0%, 100% {
+        box-shadow: 0 0 15px rgba(255, 77, 148, 0.2);
+    }
+    50% {
+        box-shadow: 0 0 25px rgba(255, 77, 148, 0.45);
+    }
+}
+
+.animate-pulse-glow {
+    animation: pulseGlow 2.5s infinite ease-in-out;
+}
+

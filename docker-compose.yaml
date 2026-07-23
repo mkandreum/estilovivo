@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # ============= APLICACIÓN MONOLÍTICA =============
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    restart: unless-stopped
+    environment:
+      # Server Configuration
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-3000}
+
+      # Database (SQLite file) — MUST be absolute path to match volume mount
+      DATABASE_URL: ${DATABASE_URL:-file:/app/data/dev.db}
+
+      # Authentication
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRES_IN: 7d
+
+      # Frontend URL (must match the public domain)
+      FRONTEND_URL: ${FRONTEND_URL:-https://estilovivo.xyoncloud.win}
+
+      # Uploads
+      UPLOADS_DIR: /app/uploads
+
+      # SMTP - Configuración de correo
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: '587'
+      SMTP_USER: appestilovivo@gmail.com
+      SMTP_PASS: wlvo avac rbqf xqik
+      EMAIL_FROM: appestilovivo@gmail.com
+      SMTP_SECURE: 'false'
+      SMTP_TLS_REJECT_UNAUTHORIZED: 'false'
+    volumes:
+      # Almacenamiento persistente
+      - uploads_data:/app/uploads
+      - sqlite_data:/app/data
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3000/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+volumes:
+  sqlite_data:
+  uploads_data:
