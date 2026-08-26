@@ -296,8 +296,7 @@ export default function FittingRoomModal({ garment: initialGarment, user, onClos
         
         setSavingMsg('¡Guardado con éxito!');
         setTimeout(() => {
-          onClose(); // Automatically close after success
-          window.location.reload(); // Quick refresh to show in looks
+          onClose();
         }, 1500);
       }, 'image/png');
     } catch (e) {

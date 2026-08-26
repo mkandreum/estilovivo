@@ -5,6 +5,7 @@ import { useNotification } from './NotificationContext';
 import { useLanguage } from './LanguageContext';
 import { prepareGarmentUpload } from '../utils/garmentProcessor';
 import { syncGet, syncSet, syncClearMemoryCache, SYNC_KEYS } from '../utils/syncStore';
+import { removeSecureItem } from '../utils/secureStorage';
 import { analytics, crashlytics } from '../utils/firebase';
 import { trackSession } from '../utils/review';
 import { registerForPushNotifications, setupNotificationListeners } from '../utils/notifications';
@@ -69,12 +70,14 @@ const SESSION_KEYS = [
     'beyour_refresh_token'
 ];
 
-const clearPersistedSession = () => {
+const clearPersistedSession = async () => {
     SESSION_KEYS.forEach(key => localStorage.removeItem(key));
     Object.values(SYNC_KEYS).forEach(key => {
         syncClearMemoryCache();
         localStorage.removeItem(key);
     });
+    await removeSecureItem('beyour_token');
+    await removeSecureItem('beyour_refresh_token');
 };
 
 // ─── Provider ────────────────────────────────────────────────────────────────
@@ -264,9 +267,21 @@ export const GlobalStateProvider: React.FC<{ children: React.ReactNode }> = ({ c
         const ms = getMsUntilRefresh();
         if (ms === null) return;
 
-        const timer = setTimeout(() => {
-            refreshAccessToken().catch(() => {});
-        }, ms);
+        let timer: ReturnType<typeof setTimeout>;
+
+        const scheduleRefresh = (delayMs: number) => {
+            timer = setTimeout(async () => {
+                try {
+                    await refreshAccessToken();
+                } catch { /* ignore */ }
+                const nextMs = getMsUntilRefresh();
+                if (nextMs !== null && nextMs > 0) {
+                    scheduleRefresh(nextMs);
+                }
+            }, delayMs);
+        };
+
+        scheduleRefresh(ms);
 
         return () => clearTimeout(timer);
     }, [user]);

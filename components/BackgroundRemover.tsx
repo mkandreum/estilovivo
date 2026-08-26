@@ -19,32 +19,54 @@ const BackgroundRemover: React.FC<BackgroundRemoverProps> = ({ imageUrl, onApply
   const lastPosRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      imgRef.current = img;
-      const maxW = Math.min(window.innerWidth - 32, 500);
-      const maxH = window.innerHeight * 0.55;
-      const scale = Math.min(maxW / img.width, maxH / img.height, 1);
-      const w = Math.round(img.width * scale);
-      const h = Math.round(img.height * scale);
-      setCanvasSize({ width: w, height: h });
+    const loadImage = async () => {
+      const img = new Image();
+      img.onload = () => {
+        imgRef.current = img;
+        const maxW = Math.min(window.innerWidth - 32, 500);
+        const maxH = window.innerHeight * 0.55;
+        const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        setCanvasSize({ width: w, height: h });
 
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-      ctx.drawImage(img, 0, 0);
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+        ctx.drawImage(img, 0, 0);
 
-      const overlay = overlayRef.current;
-      if (overlay) {
-        overlay.width = img.width;
-        overlay.height = img.height;
+        const overlay = overlayRef.current;
+        if (overlay) {
+          overlay.width = img.width;
+          overlay.height = img.height;
+        }
+        saveHistory();
+      };
+      img.onerror = () => {
+        console.error('BackgroundRemover: failed to load image');
+      };
+
+      // For server-hosted images, fetch as blob first to avoid CORS taint
+      if (imageUrl.startsWith('http') && !imageUrl.startsWith(window.location.origin)) {
+        try {
+          const res = await fetch(imageUrl);
+          const blob = await res.blob();
+          img.src = URL.createObjectURL(blob);
+        } catch {
+          // Fallback: try with crossOrigin
+          img.crossOrigin = 'anonymous';
+          img.src = imageUrl;
+        }
+      } else if (imageUrl.startsWith('http')) {
+        img.src = imageUrl;
+      } else {
+        // data: or blob: URLs - no crossOrigin needed
+        img.src = imageUrl;
       }
-      saveHistory();
     };
-    img.src = imageUrl;
+    loadImage();
   }, [imageUrl]);
 
   const saveHistory = () => {
@@ -151,9 +173,15 @@ const BackgroundRemover: React.FC<BackgroundRemoverProps> = ({ imageUrl, onApply
   const handleApply = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    canvas.toBlob((blob) => {
-      if (blob) onApply(blob);
-    }, 'image/png');
+    try {
+      canvas.toBlob((blob) => {
+        if (blob) onApply(blob);
+        else alert('Error al procesar la imagen. Intenta de nuevo.');
+      }, 'image/png');
+    } catch (err) {
+      console.error('Canvas export failed:', err);
+      alert('No se pudo procesar la imagen. Intenta con otra foto.');
+    }
   };
 
   return (

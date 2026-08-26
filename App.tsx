@@ -20,8 +20,11 @@ import { ThemeProvider } from './src/context/ThemeContext';
 import { DarkModeProvider } from './src/context/DarkModeContext';
 import { resolveNavigation } from './src/utils/navigation';
 import { api } from './services/api';
+import { App as CapApp } from '@capacitor/app';
+import { useNotification } from './src/context/NotificationContext';
 
 const AppContent: React.FC = () => {
+  const { notify } = useNotification();
   const getInitialTab = () => {
     const path = window.location.pathname;
     if (path === '/privacy') return 'privacy';
@@ -162,6 +165,18 @@ const AppContent: React.FC = () => {
     updatePlannerEntry,
     addTrip, deleteTrip, updateTrip,
   } = useGlobalState();
+
+  // ── Offline detection ─────────────────────────────────────────────────
+  useEffect(() => {
+    const handleOffline = () => notify('Sin conexión a internet', 'warning');
+    const handleOnline = () => notify('Conexión restaurada', 'success');
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [notify]);
 
   // Check onboarding from user object — API is source of truth
   useEffect(() => {
@@ -339,6 +354,17 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  useEffect(() => {
+    const handler = CapApp.addListener('backButton', ({ canGoBack }) => {
+      if (canGoBack) {
+        window.history.back();
+      } else {
+        CapApp.exitApp();
+      }
+    });
+    return () => { handler.then(h => h.remove()); };
+  }, []);
+
   useEffect(() => {
     const handleGlobalImageError = (e: Event) => {
       const target = e.target as HTMLImageElement;

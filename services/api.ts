@@ -182,7 +182,7 @@ export const refreshAccessToken = async (): Promise<string | null> => {
     isRefreshing = true;
 
     try {
-        const res = await fetch(`${API_BASE}/auth/refresh`, {
+        const res = await fetchWithTimeout(`${API_BASE}/auth/refresh`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refreshToken }),
@@ -309,11 +309,7 @@ export const parseApiErrorMessage = async (res: Response): Promise<string> => {
 const fetchWithRetry = async (url: string, options: RequestInit = {}, retries = 1): Promise<Response> => {
     for (let attempt = 0; attempt <= retries; attempt++) {
         try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 15000);
-            const res = await fetch(url, { ...options, signal: controller.signal });
-            clearTimeout(timeout);
-            return res;
+            return await fetchWithTimeout(url, options);
         } catch (err: any) {
             if (attempt === retries || err?.name === 'AbortError') throw err;
             await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
@@ -354,13 +350,26 @@ const handleResponse = async (res: Response, _isRetry = false) => {
     });
 };
 
+const DEFAULT_TIMEOUT_MS = 15000;
+
+const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Response> => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(url, { ...options, signal: controller.signal });
+        return res;
+    } finally {
+        clearTimeout(id);
+    }
+};
+
 const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<any> => {
     try {
-        const res = await fetch(url, { ...options, headers: { ...options.headers as any, ...getAuthHeader() }, credentials: 'include' });
+        const res = await fetchWithTimeout(url, { ...options, headers: { ...options.headers as any, ...getAuthHeader() }, credentials: 'include' });
         return await handleResponse(res);
     } catch (err: any) {
         if (err?.__tokenRefreshed) {
-            const res = await fetch(url, { ...options, headers: { ...options.headers as any, ...getAuthHeader() }, credentials: 'include' });
+            const res = await fetchWithTimeout(url, { ...options, headers: { ...options.headers as any, ...getAuthHeader() }, credentials: 'include' });
             return await handleResponse(res, true);
         }
         throw err;
@@ -422,7 +431,7 @@ const mapLook = (l: any): Look | undefined => {
 
 export const api = {
     auth: async (credentials: { email: string; password: string }, remember: boolean = true) => {
-        const res = await fetch(`${API_BASE}/auth/login`, {
+        const res = await fetchWithTimeout(`${API_BASE}/auth/login`, {
             credentials: 'include',
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -444,7 +453,7 @@ export const api = {
     },
 
     register: async (userData: { email: string; password: string; name: string; gender?: 'male' | 'female' | 'other'; birthDate?: string }, remember: boolean = true) => {
-        const res = await fetch(`${API_BASE}/auth/register`, {
+        const res = await fetchWithTimeout(`${API_BASE}/auth/register`, {
             credentials: 'include', method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(userData)
@@ -461,7 +470,7 @@ export const api = {
 
     logout: async () => {
         try {
-            await fetch(`${API_BASE}/auth/logout`, {
+            await fetchWithTimeout(`${API_BASE}/auth/logout`, {
                 credentials: 'include',
                 method: 'POST'
             });
@@ -475,7 +484,7 @@ export const api = {
     },
 
     deleteAccount: async () => {
-        const res = await fetch(`${API_BASE}/auth/profile`, {
+        const res = await fetchWithTimeout(`${API_BASE}/auth/profile`, {
             credentials: 'include',
             method: 'DELETE'
         });
@@ -483,7 +492,7 @@ export const api = {
     },
 
     changePassword: async (passwords: { currentPassword: string; newPassword: string }) => {
-        const res = await fetch(`${API_BASE}/auth/change-password`, {
+        const res = await fetchWithTimeout(`${API_BASE}/auth/change-password`, {
             credentials: 'include',
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -493,7 +502,7 @@ export const api = {
     },
 
     forgotPassword: async (email: string) => {
-        const res = await fetch(`${API_BASE}/auth/forgot-password`, {
+        const res = await fetchWithTimeout(`${API_BASE}/auth/forgot-password`, {
             credentials: 'include',
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -503,7 +512,7 @@ export const api = {
     },
 
     resetPassword: async (data: { token: string; newPassword: string }) => {
-        const res = await fetch(`${API_BASE}/auth/reset-password`, {
+        const res = await fetchWithTimeout(`${API_BASE}/auth/reset-password`, {
             credentials: 'include',
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -513,7 +522,7 @@ export const api = {
     },
 
     resendVerification: async (email: string) => {
-        const res = await fetch(`${API_BASE}/auth/resend-verification`, {
+        const res = await fetchWithTimeout(`${API_BASE}/auth/resend-verification`, {
             credentials: 'include',
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -523,7 +532,7 @@ export const api = {
     },
 
     verifyEmail: async (token: string) => {
-        const res = await fetch(`${API_BASE}/auth/verify-email`, {
+        const res = await fetchWithTimeout(`${API_BASE}/auth/verify-email`, {
             credentials: 'include',
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -533,13 +542,13 @@ export const api = {
     },
 
     getMe: async (): Promise<UserState> => {
-        const res = await fetch(`${API_BASE}/auth/me`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/auth/me`, { headers: getHeaders(), credentials: 'include' });
         const updated = await handleResponse(res);
         return normalizeUser(updated);
     },
 
     updateProfile: async (data: Partial<UserState>): Promise<UserState> => {
-        const res = await fetch(`${API_BASE}/auth/profile`, {
+        const res = await fetchWithTimeout(`${API_BASE}/auth/profile`, {
             credentials: 'include', method: 'PUT',
             headers: getHeaders(),
             body: JSON.stringify(data)
@@ -549,7 +558,7 @@ export const api = {
     },
 
     updateProfileWithAvatar: async (data: FormData): Promise<UserState> => {
-        const res = await fetch(`${API_BASE}/auth/profile`, {
+        const res = await fetchWithTimeout(`${API_BASE}/auth/profile`, {
             credentials: 'include', method: 'PUT',
             headers: getAuthHeader() as any,
             body: data
@@ -559,7 +568,7 @@ export const api = {
     },
 
     updateUserPreferences: async (preferences: Record<string, unknown>): Promise<void> => {
-        const res = await fetch(`${API_BASE}/auth/preferences`, {
+        const res = await fetchWithTimeout(`${API_BASE}/auth/preferences`, {
             credentials: 'include', method: 'PUT',
             headers: getHeaders(),
             body: JSON.stringify(preferences)
@@ -570,7 +579,7 @@ export const api = {
 
     // ============= GARMENTS / PRODUCTS =============
     getGarments: async (): Promise<Garment[]> => {
-        const res = await fetch(`${API_BASE}/products`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/products`, { headers: getHeaders(), credentials: 'include' });
         const data = await handleResponse(res);
         // Backend now returns { items, nextCursor, hasMore } for pagination
         const items = data.items || data; // Fallback for backwards compatibility
@@ -591,7 +600,7 @@ export const api = {
         if (garment.description) formData.append('description', garment.description);
         if (garment.file) formData.append('images', garment.file);
 
-        const res = await fetch(`${API_BASE}/products`, {
+        const res = await fetchWithTimeout(`${API_BASE}/products`, {
             credentials: 'include', method: 'POST',
             headers: getAuthHeader() as any,
             body: formData
@@ -617,7 +626,7 @@ export const api = {
             if (metadata.isWashing !== undefined) formData.append('isWashing', String(metadata.isWashing));
             if (metadata.usageCount !== undefined) formData.append('usageCount', String(metadata.usageCount));
             formData.append('images', imageFile);
-            const res = await fetch(`${API_BASE}/products/${id}`, {
+            const res = await fetchWithTimeout(`${API_BASE}/products/${id}`, {
                 credentials: 'include', method: 'PUT',
                 headers: { Authorization: `Bearer ${localStorage.getItem('beyour_token') || ''}` },
                 body: formData,
@@ -625,7 +634,7 @@ export const api = {
             const p = await handleResponse(res);
             return mapProductToGarment(p)!;
         }
-        const res = await fetch(`${API_BASE}/products/${id}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/products/${id}`, {
             credentials: 'include', method: 'PUT',
             headers: getHeaders(),
             body: JSON.stringify({
@@ -648,7 +657,7 @@ export const api = {
     },
 
     deleteGarment: async (id: string): Promise<void> => {
-        const res = await fetch(`${API_BASE}/products/${id}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/products/${id}`, {
             credentials: 'include', method: 'DELETE',
             headers: getHeaders()
         });
@@ -656,7 +665,7 @@ export const api = {
     },
 
     markAsWorn: async (id: string): Promise<Garment> => {
-        const res = await fetch(`${API_BASE}/products/${id}/wear`, {
+        const res = await fetchWithTimeout(`${API_BASE}/products/${id}/wear`, {
             credentials: 'include', method: 'POST',
             headers: getHeaders()
         });
@@ -669,7 +678,7 @@ export const api = {
         if (search) params.append('search', search);
         if (category) params.append('category', category);
 
-        const res = await fetch(`${API_BASE}/products/shop?${params.toString()}`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/products/shop?${params.toString()}`, { headers: getHeaders(), credentials: 'include' });
         const data = await handleResponse(res);
         return data.map((p: any): ShopItem => ({
             id: p.id,
@@ -687,7 +696,7 @@ export const api = {
 
     // ============= LOOKS =============
     getLooks: async (): Promise<Look[]> => {
-        const res = await fetch(`${API_BASE}/looks`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/looks`, { headers: getHeaders(), credentials: 'include' });
         const data = await handleResponse(res);
         // Backend now returns { items, nextCursor, hasMore } for pagination
         const items = data.items || data; // Fallback for backwards compatibility
@@ -703,7 +712,7 @@ export const api = {
     },
 
     saveLook: async (look: Look): Promise<Look> => {
-        const res = await fetch(`${API_BASE}/looks`, {
+        const res = await fetchWithTimeout(`${API_BASE}/looks`, {
             credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({
@@ -724,7 +733,7 @@ export const api = {
         formData.append('productIds', JSON.stringify(productIds));
         formData.append('images', imageBlob, 'look.png');
         
-        const res = await fetch(`${API_BASE}/looks`, {
+        const res = await fetchWithTimeout(`${API_BASE}/looks`, {
             credentials: 'include', method: 'POST',
             headers: getAuthHeader() as any,
             body: formData
@@ -734,7 +743,7 @@ export const api = {
     },
 
     updateLook: async (id: string, data: Partial<Look>): Promise<Look> => {
-        const res = await fetch(`${API_BASE}/looks/${id}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/looks/${id}`, {
             credentials: 'include', method: 'PUT',
             headers: getHeaders(),
             body: JSON.stringify({
@@ -750,7 +759,7 @@ export const api = {
     },
 
     deleteLook: async (id: string): Promise<void> => {
-        const res = await fetch(`${API_BASE}/looks/${id}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/looks/${id}`, {
             credentials: 'include', method: 'DELETE',
             headers: getHeaders()
         });
@@ -759,12 +768,12 @@ export const api = {
 
     // ============= TRYON PRESETS =============
     getTryonPresets: async (): Promise<any[]> => {
-        const res = await fetch(`${API_BASE}/tryon-presets`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/tryon-presets`, { headers: getHeaders(), credentials: 'include' });
         return handleResponse(res);
     },
 
     saveTryonPreset: async (preset: { name: string; thumbnail?: string; layers: any[]; rating?: number; occasion?: string }): Promise<any> => {
-        const res = await fetch(`${API_BASE}/tryon-presets`, {
+        const res = await fetchWithTimeout(`${API_BASE}/tryon-presets`, {
             method: 'POST',
             headers: { ...getHeaders(), 'Content-Type': 'application/json' },
             credentials: 'include',
@@ -774,7 +783,7 @@ export const api = {
     },
 
     updateTryonPreset: async (id: string, data: Partial<{ name: string; thumbnail?: string; layers: any[]; rating?: number; occasion?: string }>): Promise<any> => {
-        const res = await fetch(`${API_BASE}/tryon-presets/${id}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/tryon-presets/${id}`, {
             method: 'PUT',
             headers: { ...getHeaders(), 'Content-Type': 'application/json' },
             credentials: 'include',
@@ -784,7 +793,7 @@ export const api = {
     },
 
     deleteTryonPreset: async (id: string): Promise<void> => {
-        const res = await fetch(`${API_BASE}/tryon-presets/${id}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/tryon-presets/${id}`, {
             credentials: 'include', method: 'DELETE',
             headers: getHeaders()
         });
@@ -793,7 +802,7 @@ export const api = {
 
     // ============= PLANNER =============
     getPlanner: async (): Promise<PlannerEntry[]> => {
-        const res = await fetch(`${API_BASE}/planner/me`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/planner/me`, { headers: getHeaders(), credentials: 'include' });
         const data = await handleResponse(res);
         return data.map((e: any) => ({
             date: e.date,
@@ -804,7 +813,7 @@ export const api = {
     },
 
     updatePlanner: async (entry: PlannerEntry): Promise<PlannerEntry> => {
-        const res = await fetch(`${API_BASE}/planner`, {
+        const res = await fetchWithTimeout(`${API_BASE}/planner`, {
             credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ ...entry, userId: 'me' })
@@ -819,7 +828,7 @@ export const api = {
     },
 
     deletePlannerEntry: async (date: string): Promise<void> => {
-        const res = await fetch(`${API_BASE}/planner/${date}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/planner/${date}`, {
             credentials: 'include', method: 'DELETE',
             headers: getHeaders()
         });
@@ -828,7 +837,7 @@ export const api = {
 
     // ============= TRIPS =============
     getTrips: async (): Promise<Trip[]> => {
-        const res = await fetch(`${API_BASE}/trips/me`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/trips/me`, { headers: getHeaders(), credentials: 'include' });
         return handleResponse(res);
     },
 
@@ -838,7 +847,7 @@ export const api = {
             ...rest,
             garmentIds: garments ? garments.map(g => g.id) : []
         };
-        const res = await fetch(`${API_BASE}/trips`, {
+        const res = await fetchWithTimeout(`${API_BASE}/trips`, {
             credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify(payload)
@@ -852,7 +861,7 @@ export const api = {
             ...rest,
             garmentIds: garments ? garments.map(g => g.id) : []
         };
-        const res = await fetch(`${API_BASE}/trips/${trip.id}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/trips/${trip.id}`, {
             credentials: 'include', method: 'PUT',
             headers: getHeaders(),
             body: JSON.stringify(payload)
@@ -861,7 +870,7 @@ export const api = {
     },
 
     deleteTrip: async (id: string): Promise<void> => {
-        const res = await fetch(`${API_BASE}/trips/${id}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/trips/${id}`, {
             credentials: 'include', method: 'DELETE',
             headers: getHeaders()
         });
@@ -869,7 +878,7 @@ export const api = {
     },
 
     addTripItem: async (tripId: string, label: string, isEssential: boolean = false) => {
-        const res = await fetch(`${API_BASE}/trips/${tripId}/items`, {
+        const res = await fetchWithTimeout(`${API_BASE}/trips/${tripId}/items`, {
             credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ label, isEssential })
@@ -878,7 +887,7 @@ export const api = {
     },
 
     updateTripItem: async (tripId: string, itemId: string, data: { checked?: boolean; label?: string }) => {
-        const res = await fetch(`${API_BASE}/trips/${tripId}/items/${itemId}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/trips/${tripId}/items/${itemId}`, {
             credentials: 'include', method: 'PUT',
             headers: getHeaders(),
             body: JSON.stringify(data)
@@ -887,7 +896,7 @@ export const api = {
     },
 
     deleteTripItem: async (tripId: string, itemId: string) => {
-        const res = await fetch(`${API_BASE}/trips/${tripId}/items/${itemId}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/trips/${tripId}/items/${itemId}`, {
             credentials: 'include', method: 'DELETE',
             headers: getHeaders()
         });
@@ -896,7 +905,7 @@ export const api = {
 
     // ============= SOCIAL =============
     toggleLike: async (lookId: string): Promise<{ liked: boolean; likesCount: number }> => {
-        const res = await fetch(`${API_BASE}/social/like`, {
+        const res = await fetchWithTimeout(`${API_BASE}/social/like`, {
             credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ lookId })
@@ -905,7 +914,7 @@ export const api = {
     },
 
     addComment: async (lookId: string, content: string, parentId?: string): Promise<Comment> => {
-        const res = await fetch(`${API_BASE}/social/comment`, {
+        const res = await fetchWithTimeout(`${API_BASE}/social/comment`, {
             credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ lookId, content, parentId })
@@ -931,7 +940,7 @@ export const api = {
     },
 
     getComments: async (lookId: string): Promise<Comment[]> => {
-        const res = await fetch(`${API_BASE}/social/comments/${lookId}`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/social/comments/${lookId}`, { headers: getHeaders(), credentials: 'include' });
         const data = await handleResponse(res);
         return data.map((c: any) => ({
             id: c.id,
@@ -953,7 +962,7 @@ export const api = {
     },
 
     deleteComment: async (id: string): Promise<void> => {
-        const res = await fetch(`${API_BASE}/social/comment/${id}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/social/comment/${id}`, {
             credentials: 'include', method: 'DELETE',
             headers: getHeaders()
         });
@@ -961,7 +970,7 @@ export const api = {
     },
 
     toggleFavorite: async (lookId?: string, productId?: string): Promise<{ favorited: boolean }> => {
-        const res = await fetch(`${API_BASE}/social/favorite`, {
+        const res = await fetchWithTimeout(`${API_BASE}/social/favorite`, {
             credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ lookId, productId })
@@ -970,13 +979,13 @@ export const api = {
     },
 
     getFavorites: async () => {
-        const res = await fetch(`${API_BASE}/social/favorites`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/social/favorites`, { headers: getHeaders(), credentials: 'include' });
         const data = await handleResponse(res);
         return normalizeAssetsDeep(data);
     },
 
     toggleFollow: async (targetUserId: string): Promise<{ following: boolean; requesting?: boolean }> => {
-        const res = await fetch(`${API_BASE}/social/follow`, {
+        const res = await fetchWithTimeout(`${API_BASE}/social/follow`, {
             credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ targetUserId })
@@ -985,28 +994,28 @@ export const api = {
     },
 
     getFollowRequests: async () => {
-        const res = await fetch(`${API_BASE}/social/follow-requests`, {
+        const res = await fetchWithTimeout(`${API_BASE}/social/follow-requests`, {
             credentials: 'include', headers: getHeaders()
         });
         return handleResponse(res);
     },
 
     approveFollowRequest: async (requestId: string) => {
-        const res = await fetch(`${API_BASE}/social/follow-requests/${requestId}/approve`, {
+        const res = await fetchWithTimeout(`${API_BASE}/social/follow-requests/${requestId}/approve`, {
             credentials: 'include', method: 'PUT', headers: getHeaders()
         });
         return handleResponse(res);
     },
 
     rejectFollowRequest: async (requestId: string) => {
-        const res = await fetch(`${API_BASE}/social/follow-requests/${requestId}/reject`, {
+        const res = await fetchWithTimeout(`${API_BASE}/social/follow-requests/${requestId}/reject`, {
             credentials: 'include', method: 'PUT', headers: getHeaders()
         });
         return handleResponse(res);
     },
 
     getUserProfile: async (userId: string) => {
-        const res = await fetch(`${API_BASE}/users/${userId}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/users/${userId}`, {
             credentials: 'include', headers: getHeaders()
         });
         return handleResponse(res);
@@ -1014,7 +1023,7 @@ export const api = {
 
     // ============= STATS =============
     getStats: async () => {
-        const res = await fetch(`${API_BASE}/stats`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/stats`, { headers: getHeaders(), credentials: 'include' });
         const data = await handleResponse(res);
         return normalizeAssetsDeep(data);
     },
@@ -1033,7 +1042,7 @@ export const api = {
 
     // ============= STORIES =============
     getStories: async (): Promise<StoryEntry[]> => {
-        const res = await fetch(`${API_BASE}/stories`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/stories`, { headers: getHeaders(), credentials: 'include' });
         const data = await handleResponse(res);
         const currentUserId = (() => {
             try {
@@ -1065,7 +1074,7 @@ export const api = {
         } else if (data.imageUrl) {
             formData.append('imageUrl', data.imageUrl);
         }
-        const res = await fetch(`${API_BASE}/stories`, {
+        const res = await fetchWithTimeout(`${API_BASE}/stories`, {
             credentials: 'include', method: 'POST',
             headers: getAuthHeader() as any,
             body: formData,
@@ -1093,7 +1102,7 @@ export const api = {
     },
 
     viewStory: async (storyId: string): Promise<void> => {
-        const res = await fetch(`${API_BASE}/stories/${storyId}/view`, {
+        const res = await fetchWithTimeout(`${API_BASE}/stories/${storyId}/view`, {
             credentials: 'include', method: 'POST',
             headers: getHeaders(),
         });
@@ -1101,7 +1110,7 @@ export const api = {
     },
 
     deleteStory: async (storyId: string): Promise<void> => {
-        const res = await fetch(`${API_BASE}/stories/${storyId}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/stories/${storyId}`, {
             credentials: 'include', method: 'DELETE',
             headers: getHeaders(),
         });
@@ -1119,7 +1128,7 @@ export const api = {
 
     // ============= CHAT =============
     getConversations: async (): Promise<ChatConversation[]> => {
-        const res = await fetch(`${API_BASE}/chat/conversations`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/chat/conversations`, { headers: getHeaders(), credentials: 'include' });
         const data = await handleResponse(res);
         const normalized = normalizeAssetsDeep(data);
         // Compute otherUser from participants (filter out current user)
@@ -1139,7 +1148,7 @@ export const api = {
     },
 
     createConversation: async (payload: { targetUserId: string; itemId?: string; itemTitle?: string; itemImage?: string; initialMessage?: string; }) => {
-        const res = await fetch(`${API_BASE}/chat/conversations`, {
+        const res = await fetchWithTimeout(`${API_BASE}/chat/conversations`, {
             credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify(payload)
@@ -1148,13 +1157,13 @@ export const api = {
     },
 
     getConversationMessages: async (conversationId: string): Promise<ChatMessage[]> => {
-        const res = await fetch(`${API_BASE}/chat/conversations/${conversationId}/messages`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/chat/conversations/${conversationId}/messages`, { headers: getHeaders(), credentials: 'include' });
         const data = await handleResponse(res);
         return normalizeAssetsDeep(data);
     },
 
     sendConversationMessage: async (conversationId: string, content: string, imageUrl?: string, productId?: string): Promise<ChatMessage> => {
-        const res = await fetch(`${API_BASE}/chat/conversations/${conversationId}/messages`, {
+        const res = await fetchWithTimeout(`${API_BASE}/chat/conversations/${conversationId}/messages`, {
             credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ content, imageUrl, productId })
@@ -1165,7 +1174,7 @@ export const api = {
     uploadChatImage: async (file: File): Promise<{ imageUrl: string }> => {
         const formData = new FormData();
         formData.append('image', file);
-        const res = await fetch(`${API_BASE}/chat/upload`, {
+        const res = await fetchWithTimeout(`${API_BASE}/chat/upload`, {
             credentials: 'include', method: 'POST',
             headers: { ...getAuthHeader() },
             body: formData
@@ -1188,22 +1197,22 @@ export const api = {
 
     // ============= CHALLENGES =============
     getCurrentChallenge: async () => {
-        const res = await fetch(`${API_BASE}/challenges/current`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/challenges/current`, { headers: getHeaders(), credentials: 'include' });
         return handleResponse(res);
     },
 
     getMySubmissions: async () => {
-        const res = await fetch(`${API_BASE}/challenges/my-submissions`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/challenges/my-submissions`, { headers: getHeaders(), credentials: 'include' });
         return handleResponse(res);
     },
 
     getChallengeHistory: async () => {
-        const res = await fetch(`${API_BASE}/challenges/history`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/challenges/history`, { headers: getHeaders(), credentials: 'include' });
         return handleResponse(res);
     },
 
     submitChallenge: async (formData: FormData) => {
-        const res = await fetch(`${API_BASE}/challenges/submit`, {
+        const res = await fetchWithTimeout(`${API_BASE}/challenges/submit`, {
             credentials: 'include', method: 'POST',
             headers: { ...getAuthHeader() },
             body: formData
@@ -1212,7 +1221,7 @@ export const api = {
     },
 
     deleteChallengeSubmission: async (id: string) => {
-        const res = await fetch(`${API_BASE}/challenges/submissions/${id}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/challenges/submissions/${id}`, {
             credentials: 'include', method: 'DELETE',
             headers: { ...getAuthHeader() }
         });
@@ -1220,7 +1229,7 @@ export const api = {
     },
 
     forceRotateChallenge: async () => {
-        const res = await fetch(`${API_BASE}/challenges/force-rotate`, {
+        const res = await fetchWithTimeout(`${API_BASE}/challenges/force-rotate`, {
             credentials: 'include', method: 'POST',
             headers: { ...getAuthHeader() }
         });
@@ -1229,22 +1238,22 @@ export const api = {
 
     // ============= GAMIFICATION =============
     getGamificationProgress: async () => {
-        const res = await fetch(`${API_BASE}/gamification/progress`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/gamification/progress`, { headers: getHeaders(), credentials: 'include' });
         return handleResponse(res);
     },
 
     getAchievements: async () => {
-        const res = await fetch(`${API_BASE}/gamification/achievements`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/gamification/achievements`, { headers: getHeaders(), credentials: 'include' });
         return handleResponse(res);
     },
 
     getBadges: async () => {
-        const res = await fetch(`${API_BASE}/gamification/badges`, { headers: getHeaders(), credentials: 'include' });
+        const res = await fetchWithTimeout(`${API_BASE}/gamification/badges`, { headers: getHeaders(), credentials: 'include' });
         return handleResponse(res);
     },
 
     checkAchievements: async () => {
-        const res = await fetch(`${API_BASE}/gamification/check-achievements`, {
+        const res = await fetchWithTimeout(`${API_BASE}/gamification/check-achievements`, {
             credentials: 'include', method: 'POST',
             headers: { ...getAuthHeader() }
         });
@@ -1252,7 +1261,7 @@ export const api = {
     },
 
     gamificationLogin: async () => {
-        const res = await fetch(`${API_BASE}/gamification/login`, {
+        const res = await fetchWithTimeout(`${API_BASE}/gamification/login`, {
             credentials: 'include', method: 'POST',
             headers: { ...getAuthHeader() }
         });

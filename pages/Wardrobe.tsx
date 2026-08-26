@@ -133,6 +133,11 @@ const Wardrobe: React.FC<WardrobeProps> = ({
     setAddPhotoError(null);
     try {
       const { dataUrl, file } = await pickPhoto(source);
+      const error = validateImage(file);
+      if (error) {
+        setAddPhotoError(error);
+        return;
+      }
       applyPickedPhoto(dataUrl, file);
     } catch (err: any) {
       const rawMessage = String(err?.message || err || '');
@@ -264,6 +269,11 @@ const Wardrobe: React.FC<WardrobeProps> = ({
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      const error = validateImage(file);
+      if (error) {
+        setAddPhotoError(error);
+        return;
+      }
       setNewFile(file);
       const reader = new FileReader();
       reader.onloadend = () => setNewImage(reader.result as string);
@@ -366,7 +376,10 @@ const Wardrobe: React.FC<WardrobeProps> = ({
     setEditDescription('');
     setEditPrice('');
     setEditForSale(false);
-    setEditImage(null);
+    setEditImage(prev => {
+      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev);
+      return null;
+    });
     setEditFile(null);
   };
 
@@ -1315,6 +1328,11 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                     <input type="file" accept="image/*" className="hidden" onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
+                      const error = validateImage(file);
+                      if (error) {
+                        alert(error);
+                        return;
+                      }
                       setEditFile(file);
                       const reader = new FileReader();
                       reader.onloadend = () => setEditImage(reader.result as string);
@@ -1405,7 +1423,10 @@ const Wardrobe: React.FC<WardrobeProps> = ({
             onApply={(blob) => {
               const file = new File([blob], `cropped-${Date.now()}.png`, { type: 'image/png' });
               setEditFile(file);
-              setEditImage(URL.createObjectURL(blob));
+              setEditImage(prev => {
+                if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev);
+                return URL.createObjectURL(blob);
+              });
               setBgRemoverImage(null);
             }}
             onCancel={() => setBgRemoverImage(null)}

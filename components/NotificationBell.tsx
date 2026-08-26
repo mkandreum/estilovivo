@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Bell } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 import { API_BASE, getAuthHeader, getSocketOrigin, parseApiErrorMessage } from '../services/api';
@@ -23,13 +23,17 @@ const NotificationBell: React.FC = () => {
     const [fetchError, setFetchError] = useState<string | null>(null);
     const { t } = useLanguage();
 
+    const mountedRef = useRef(true);
+
     useEffect(() => {
+        mountedRef.current = true;
         const fetchNotifications = async () => {
             try {
                 const res = await fetch(`${API_BASE}/notifications`, {
                     credentials: 'include',
                     headers: getAuthHeader() as HeadersInit,
                 });
+                if (!mountedRef.current) return;
                 if (res.ok) {
                     const data = await res.json();
                     setNotifications(data);
@@ -49,9 +53,11 @@ const NotificationBell: React.FC = () => {
         const newSocket = io(getSocketOrigin(), {
             withCredentials: true,
             autoConnect: true,
-            transports: ['polling'],
-            reconnectionAttempts: 3,
-            reconnectionDelay: 5000,
+            auth: { token: localStorage.getItem('beyour_token') || '' },
+            transports: ['websocket', 'polling'],
+            reconnectionAttempts: 10,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 30000,
         });
 
         setSocket(newSocket);
@@ -67,10 +73,12 @@ const NotificationBell: React.FC = () => {
         }
 
         newSocket.on('notification', (notif: Notification) => {
+            if (!mountedRef.current) return;
             setNotifications(prev => [notif, ...prev]);
         });
 
         return () => {
+            mountedRef.current = false;
             newSocket.disconnect();
         };
     }, []);

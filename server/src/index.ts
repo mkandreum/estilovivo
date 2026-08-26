@@ -36,7 +36,8 @@ import {
   favoriteSchema,
   followSchema,
   plannerSchema,
-  tripSchema
+  tripSchema,
+  refreshSchema
 } from './validators.js';
 import { fashionTrendsService } from './fashionTrends.js';
 import { awardPoints } from './gamification.js';
@@ -382,6 +383,7 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
   'capacitor://localhost', // Potential Capacitor/Mobile origin
+  'https://localhost',
   'http://localhost',
 ].filter(Boolean) as string[]; // Remove undefined values
 
@@ -923,7 +925,7 @@ app.post('/api/auth/logout', async (req: Request, res: Response) => {
   res.json({ success: true });
 });
 
-app.post('/api/auth/refresh', async (req: Request, res: Response) => {
+app.post('/api/auth/refresh', validate(refreshSchema), async (req: Request, res: Response) => {
   try {
     const { refreshToken } = req.body;
     if (!refreshToken) {

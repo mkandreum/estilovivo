@@ -130,6 +130,8 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
   const chatFileInputRef = useRef<HTMLInputElement | null>(null);
   const [messageReactions, setMessageReactions] = useState<Record<string, string[]>>({});
   const [chatSocket, setChatSocket] = useState<Socket | null>(null);
+  const mountedRef = useRef(true);
+  const toastTimersRef = useRef<number[]>([]);
 
   // Publish Post Modal (Instagram-style)
   const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
@@ -325,8 +327,17 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
     const leveledUp = nextLevel > currentLevel;
     handleUpdateUser({ ...activeUser, experiencePoints: nextXp, level: nextLevel });
     setStoryToast(leveledUp ? `¡Subiste al nivel ${nextLevel}! +${amount} XP por ${reason}` : `+${amount} XP por ${reason}`);
-    window.setTimeout(() => setStoryToast(null), 3200);
+    scheduleToastClear(() => setStoryToast(null), 3200);
   };
+
+  const scheduleToastClear = useCallback((fn: () => void, delay: number) => {
+    const id = window.setTimeout(() => {
+      toastTimersRef.current = toastTimersRef.current.filter(t => t !== id);
+      fn();
+    }, delay);
+    toastTimersRef.current.push(id);
+    return id;
+  }, []);
 
   useEffect(() => {
     const loadChallenge = async () => {
@@ -409,7 +420,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
         handleUpdateUser({ ...activeUser, experiencePoints: result.experiencePoints, level: result.level || Math.floor(result.experiencePoints / 100) + 1 });
       }
       setStoryToast(result.validationMessage || `+${currentChallenge.reward} XP por participar en el reto semanal`);
-      window.setTimeout(() => setStoryToast(null), 4000);
+      scheduleToastClear(() => setStoryToast(null), 4000);
     } catch (e: any) {
       setChallengeValidationMsg(e?.message || 'Error al participar');
     } finally {
@@ -432,10 +443,10 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
       }
       setChallengeSubmission(null);
       setStoryToast('Participación eliminada. Puedes volver a participar.');
-      window.setTimeout(() => setStoryToast(null), 3200);
+      scheduleToastClear(() => setStoryToast(null), 3200);
     } catch (e: any) {
       setStoryToast(e?.message || 'Error al eliminar');
-      window.setTimeout(() => setStoryToast(null), 3200);
+      scheduleToastClear(() => setStoryToast(null), 3200);
     } finally {
       setChallengeDeletingId(null);
     }
@@ -518,10 +529,10 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
 
     addXp(15, 'subir una historia');
     setPublishedBounce('story');
-    window.setTimeout(() => setPublishedBounce(null), 800);
+    scheduleToastClear(() => setPublishedBounce(null), 800);
     successImpact();
     setStoryToast(hadStories ? 'Tu historia se publicó con éxito.' : '¡Bienvenida a tu primera historia!');
-    window.setTimeout(() => setStoryToast(null), 3200);
+    scheduleToastClear(() => setStoryToast(null), 3200);
   };
 
   const handleStoryView = (storyId: string) => {
@@ -628,8 +639,9 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
   // Socket connection for real-time chat — keep alive across all tabs
   const seenMessageIdsRef = useRef(new Set<string>());
   useEffect(() => {
+    mountedRef.current = true;
     const token = localStorage.getItem('beyour_token');
-    const newSocket = io(getSocketOrigin(), { withCredentials: true, auth: { token }, transports: ['polling'], reconnectionAttempts: 5, reconnectionDelay: 2000 });
+    const newSocket = io(getSocketOrigin(), { withCredentials: true, auth: { token }, transports: ['websocket', 'polling'], reconnectionAttempts: 10, reconnectionDelay: 1000, reconnectionDelayMax: 30000 });
     setChatSocket(newSocket);
 
     // Join personal user room for receiving messages from other participants
@@ -639,6 +651,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
     }
 
     newSocket.on('new_message', (message: ChatMessage) => {
+      if (!mountedRef.current) return;
       setMessagesById(prev => {
         const threadMessages = prev[message.conversationId] || [];
         // Dedup: exact message ID match
@@ -666,7 +679,13 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
       ).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()));
     });
 
-    return () => { newSocket.disconnect(); setChatSocket(null); };
+    return () => {
+      mountedRef.current = false;
+      newSocket.disconnect();
+      setChatSocket(null);
+      toastTimersRef.current.forEach(id => clearTimeout(id));
+      toastTimersRef.current = [];
+    };
   }, []);
 
   // Join conversation rooms — track already-joined rooms to avoid duplicates
@@ -729,11 +748,11 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
       setPublishPhotoFile(null);
       setPublishDescription('');
       setPublishedBounce('post');
-      window.setTimeout(() => setPublishedBounce(null), 800);
+      scheduleToastClear(() => setPublishedBounce(null), 800);
       successImpact();
       addXp(20, 'publicar en el feed');
       setStoryToast('Publicación compartida +20 XP');
-      window.setTimeout(() => setStoryToast(null), 3200);
+      scheduleToastClear(() => setStoryToast(null), 3200);
     } catch (error) {
       console.error("Error publishing:", error);
       setPublishError('Error al publicar. Inténtalo de nuevo.');
@@ -756,7 +775,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
       if (!likedBefore && result.liked) {
         addXp(2, 'dar me gusta');
         setStoryToast('Me gusta dado +2 XP');
-        window.setTimeout(() => setStoryToast(null), 3200);
+        scheduleToastClear(() => setStoryToast(null), 3200);
       }
     } catch (error) {
       console.error("Error toggling like:", error);
@@ -816,7 +835,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
       console.error("Error deleting post:", error);
       errorImpact();
       setStoryToast('Error al eliminar la publicación');
-      window.setTimeout(() => setStoryToast(null), 3200);
+      scheduleToastClear(() => setStoryToast(null), 3200);
     } finally {
       setDeletingPostId(null);
       setPostMenuOpenId(null);
@@ -833,7 +852,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
     } catch (error) {
       console.error("Error deleting story:", error);
       setStoryToast('Error al eliminar la historia');
-      window.setTimeout(() => setStoryToast(null), 3200);
+      scheduleToastClear(() => setStoryToast(null), 3200);
     } finally {
       setDeletingStoryId(null);
       setStoryMenuOpenId(null);
@@ -851,7 +870,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
     } else {
       navigator.clipboard.writeText(url).then(() => {
         setStoryToast('Enlace copiado al portapapeles');
-        window.setTimeout(() => setStoryToast(null), 2500);
+        scheduleToastClear(() => setStoryToast(null), 2500);
       }).catch(() => {});
     }
   };
@@ -890,7 +909,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
       addXp(3, 'comentar una publicación');
       // Show notification toast
       setStoryToast('Comentario enviado +3 XP');
-      window.setTimeout(() => setStoryToast(null), 3200);
+      scheduleToastClear(() => setStoryToast(null), 3200);
     } catch (error) {
       console.error("Error sending comment:", error);
     }
@@ -1133,7 +1152,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
     // Show notification for sales-related chat
     if (activeThread.itemTitle) {
       setStoryToast('Mensaje enviado al vendedor');
-      window.setTimeout(() => setStoryToast(null), 3200);
+      scheduleToastClear(() => setStoryToast(null), 3200);
     }
   };
 
@@ -1149,7 +1168,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
     });
     addXp(1, 'reaccionar a mensaje');
     setStoryToast('Reacción añadida +1 XP');
-    window.setTimeout(() => setStoryToast(null), 3200);
+    scheduleToastClear(() => setStoryToast(null), 3200);
   };
 
   // === UTILS ===
@@ -1286,9 +1305,9 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
                       try {
                         await api.forceRotateChallenge();
                         setStoryToast('🔄 Reto cambiado');
-                        window.setTimeout(() => setStoryToast(null), 2000);
+                        scheduleToastClear(() => setStoryToast(null), 2000);
                         window.location.reload();
-                      } catch { setStoryToast('Error al cambiar reto'); window.setTimeout(() => setStoryToast(null), 2000); }
+                      } catch { setStoryToast('Error al cambiar reto'); scheduleToastClear(() => setStoryToast(null), 2000); }
                     }}
                     className="text-[9px] font-medium text-white/50 hover:text-white underline"
                   >
