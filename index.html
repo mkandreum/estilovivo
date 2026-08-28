@@ -38,6 +38,19 @@
 
 <body>
   <script>
+    // Capacitor: prevent service worker registration entirely
+    if (window.Capacitor && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        regs.forEach(function(reg) { reg.unregister(); });
+      });
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          regs.forEach(function(reg) { reg.unregister(); });
+        });
+      });
+    }
+  </script>
+  <script>
     // Suppress framer-motion passive event listener warnings on touch
     (function() {
       var orig = EventTarget.prototype.addEventListener;
@@ -52,7 +65,7 @@
   <script>
     // One-time cleanup: unregister stale service workers from previous builds
     var EV_SW_VERSION = '2026-07-28-v4';
-    if (localStorage.getItem('ev_sw_version') !== EV_SW_VERSION) {
+    if (!window.Capacitor && localStorage.getItem('ev_sw_version') !== EV_SW_VERSION) {
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(function(regs) {
           regs.forEach(function(reg) { reg.unregister(); });
