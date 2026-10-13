@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { UserState, Garment, Look, PlannerEntry, Trip } from '../../types';
-import { api, loadAuthToken, refreshAccessToken } from '../../services/api';
+import { api, loadAuthToken, refreshAccessToken, getSocketOrigin } from '../../services/api';
 import { useNotification } from './NotificationContext';
 import { useLanguage } from './LanguageContext';
 import { prepareGarmentUpload } from '../utils/garmentProcessor';
@@ -28,12 +28,13 @@ interface GlobalStateContextValue {
     setUser: React.Dispatch<React.SetStateAction<UserState | null>>;
     handleAuthSuccess: (userData: UserState, remember?: boolean) => void;
     handleMoodChange: (mood: string) => Promise<void>;
-    handleUpdateUser: (updatedUser: UserState) => Promise<void>;
+    handleUpdateUser: (updatedUser: UserState, options?: { persist?: boolean }) => Promise<void>;
 
     // Garments
-    addGarment: (garment: Garment, file?: File) => Promise<void>;
+    addGarment: (garment: Garment, file?: File) => Promise<boolean>;
     removeGarment: (id: string) => Promise<void>;
     updateGarment: (g: Garment) => Promise<void>;
+    copyProductToWardrobe: (product: any) => Promise<boolean>;
 
     // Looks
     saveLook: (look: Look, onAfterSave?: () => void) => Promise<void>;
@@ -43,7 +44,7 @@ interface GlobalStateContextValue {
     updatePlannerEntry: (entry: PlannerEntry) => Promise<void>;
 
     // Trips
-    addTrip: (newTrip: Trip) => Promise<void>;
+    addTrip: (newTrip: Trip) => Promise<Trip | undefined>;
     deleteTrip: (id: string) => Promise<void>;
     updateTrip: (trip: Trip) => Promise<void>;
 }
@@ -78,6 +79,15 @@ const clearPersistedSession = async () => {
     });
     await removeSecureItem('beyour_token');
     await removeSecureItem('beyour_refresh_token');
+};
+
+// Mensaje de error útil del servidor (validación, límites…) o null si es técnico
+const serverMessage = (error: unknown): string | null => {
+    const msg = (error as any)?.message;
+    if (typeof msg !== 'string' || !msg || msg.length > 160) return null;
+    if (/^(Error \d+|Request failed|Failed to fetch|NetworkError|Load failed)/i.test(msg) || msg.includes('aborted')) return null;
+    if (msg === 'Error de validación') return 'Revisa los datos introducidos';
+    return msg;
 };
 
 // ─── Provider ────────────────────────────────────────────────────────────────
@@ -182,6 +192,19 @@ export const GlobalStateProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 }
 
                 api.gamificationLogin().catch(() => {});
+                // Sesión restaurada: también hay que registrar push/analytics (antes sólo se hacía al hacer login)
+                try {
+                    analytics.setUserId(userData!.id);
+                    crashlytics.setUserId(userData!.id);
+                    trackSession();
+                    registerForPushNotifications();
+                    setupNotificationListeners(
+                        () => {},
+                        (data: any) => {
+                            if (data?.tab) window.dispatchEvent(new CustomEvent('navigateTo', { detail: { tab: data.tab, subTab: data.subTab } }));
+                        }
+                    );
+                } catch { /* plugins nativos opcionales */ }
 
                 const [fetchedGarments, fetchedLooks, fetchedPlanner, fetchedTrips] =
                     await Promise.allSettled([
@@ -296,9 +319,12 @@ export const GlobalStateProvider: React.FC<{ children: React.ReactNode }> = ({ c
         trackSession();
         registerForPushNotifications();
         setupNotificationListeners(
-            (title, body) => console.log('Notification received:', title, body),
-            (data) => console.log('Notification tapped:', data)
+            () => {},
+            (data: any) => {
+                if (data?.tab) window.dispatchEvent(new CustomEvent('navigateTo', { detail: { tab: data.tab, subTab: data.subTab } }));
+            }
         );
+        api.gamificationLogin().catch(() => {});
 
         if (remember) {
             syncSet(SYNC_KEYS.USER, userData);
@@ -351,11 +377,13 @@ export const GlobalStateProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
     }, []);
 
-    const handleUpdateUser = useCallback(async (updatedUser: UserState) => {
+    // persist=false cuando el llamador ya guardó en el servidor (evita un PUT redundante con el usuario completo)
+    const handleUpdateUser = useCallback(async (updatedUser: UserState, options?: { persist?: boolean }) => {
         let prevUser: UserState | null = null;
         setUser(prev => { prevUser = prev; return updatedUser; });
         syncSet(SYNC_KEYS.USER, updatedUser);
         window.dispatchEvent(new CustomEvent('ev:user-loaded', { detail: updatedUser }));
+        if (options?.persist === false) return;
         try {
             await api.updateProfile(updatedUser);
         } catch (error) {
@@ -366,6 +394,15 @@ export const GlobalStateProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 window.dispatchEvent(new CustomEvent('ev:user-loaded', { detail: prevUser }));
             }
         }
+    }, []);
+
+    // El servidor otorga XP de forma asíncrona: refrescamos nivel/XP poco después de la acción
+    const refreshXpSoon = useCallback(() => {
+        window.setTimeout(() => {
+            api.getMe().then(fresh => {
+                setUser(prev => prev ? { ...prev, experiencePoints: fresh.experiencePoints, level: fresh.level } : prev);
+            }).catch(() => {});
+        }, 800);
     }, []);
 
     // ── Garments ─────────────────────────────────────────────────────────────
@@ -413,14 +450,17 @@ export const GlobalStateProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
             analytics.logEvent('add_garment', { category: garment.type });
             notify(`✓ ${t('garmentAdded')}`, 'success');
+            refreshXpSoon();
+            return true;
         } catch (error) {
             setGarments(prev => {
                 const filtered = prev.filter(g => g.id !== tempId);
                 syncSet(SYNC_KEYS.GARMENTS, filtered);
                 return filtered;
             });
-            notify(`✗ ${t('garmentAddError')}`, 'error');
+            notify(`✗ ${serverMessage(error) || t('garmentAddError')}`, 'error');
             console.error('Error adding garment:', error);
+            return false;
         }
     }, [notify, t]);
 
@@ -467,10 +507,35 @@ export const GlobalStateProvider: React.FC<{ children: React.ReactNode }> = ({ c
         } catch (error) {
             setGarments(previousGarments);
             syncSet(SYNC_KEYS.GARMENTS, previousGarments);
-            notify(`✗ ${t('garmentUpdateError')}`, 'error');
+            notify(`✗ ${serverMessage(error) || t('garmentUpdateError')}`, 'error');
             console.error('Error updating garment:', error);
         }
     }, [notify, t]);
+
+    // Copia una prenda de la tienda/favoritos al armario propio, incluida su foto
+    const copyProductToWardrobe = useCallback(async (product: any): Promise<boolean> => {
+        if (!product) return false;
+        let file: File | undefined;
+        const imgUrl: string | undefined = product.images?.[0]?.url || product.imageUrl;
+        if (imgUrl) {
+            try {
+                const absolute = /^(https?:|data:|blob:)/.test(imgUrl) ? imgUrl : `${getSocketOrigin()}${imgUrl}`;
+                const blob = await fetch(absolute).then(r => { if (!r.ok) throw new Error('img'); return r.blob(); });
+                file = new File([blob], `garment-${Date.now()}.webp`, { type: blob.type || 'image/webp' });
+            } catch { /* se copia sin imagen */ }
+        }
+        return addGarment({
+            id: '',
+            name: product.name || product.title || 'Prenda',
+            type: product.category || product.type || 'top',
+            color: product.color || 'varios',
+            season: product.season || 'all',
+            brand: product.brand || undefined,
+            size: product.size || undefined,
+            imageUrl: imgUrl || '',
+            usageCount: 0,
+        } as Garment, file);
+    }, [addGarment]);
 
     // ── Looks ─────────────────────────────────────────────────────────────────
 
@@ -500,6 +565,7 @@ export const GlobalStateProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
             analytics.logEvent('save_look', { garment_count: look.garments?.length || 0 });
             notify(`✓ ${t('lookSaved')}`, 'success');
+            if (!isEdit) refreshXpSoon();
             onAfterSave?.();
         } catch (error) {
             setLooks(prev => {
@@ -507,7 +573,7 @@ export const GlobalStateProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 syncSet(SYNC_KEYS.LOOKS, filtered);
                 return filtered;
             });
-            notify(`✗ ${t('lookSaveError')}`, 'error');
+            notify(`✗ ${serverMessage(error) || t('lookSaveError')}`, 'error');
             console.error('Error saving look:', error);
         }
     }, [notify, t]);
@@ -536,13 +602,22 @@ export const GlobalStateProvider: React.FC<{ children: React.ReactNode }> = ({ c
     // ── Planner ───────────────────────────────────────────────────────────────
 
     const updatePlannerEntry = useCallback(async (entry: PlannerEntry) => {
+        let previous: PlannerEntry[] = [];
+        // Un día sin look ni nota se elimina en lugar de guardar una entrada vacía
+        const isEmpty = !entry.lookId && !entry.eventNote?.trim();
         setPlanner(prev => {
-            const updated = [...prev.filter(p => p.date !== entry.date), entry];
+            previous = prev;
+            const updated = isEmpty
+                ? prev.filter(p => p.date !== entry.date)
+                : [...prev.filter(p => p.date !== entry.date), entry];
             syncSet(SYNC_KEYS.PLANNER, updated);
             return updated;
         });
-
         try {
+            if (isEmpty) {
+                if (previous.some(p => p.date === entry.date)) await api.deletePlannerEntry(entry.date);
+                return;
+            }
             const saved = await api.updatePlanner(entry);
             setPlanner(prev => {
                 const final = [...prev.filter(p => p.date !== entry.date), saved];
@@ -550,9 +625,12 @@ export const GlobalStateProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 return final;
             });
         } catch (error) {
+            setPlanner(previous);
+            syncSet(SYNC_KEYS.PLANNER, previous);
+            notify('✗ No se pudo guardar el planificador', 'error');
             console.error('Error updating planner:', error);
         }
-    }, []);
+    }, [notify]);
 
     // ── Trips ─────────────────────────────────────────────────────────────────
 
@@ -573,27 +651,33 @@ const addTrip = useCallback(async (newTrip: Trip) => {
             return updated;
         });
         notify('✓ Viaje creado', 'success');
+        return saved;
     } catch (error) {
         setTrips(previousTrips);
         syncSet(SYNC_KEYS.TRIPS, previousTrips);
-        notify('✗ Error al crear viaje', 'error');
+        notify(`✗ ${serverMessage(error) || 'Error al crear viaje'}`, 'error');
         console.error('Error saving trip:', error);
+        return undefined;
     }
 }, [notify]);
 
     const deleteTrip = useCallback(async (id: string) => {
+        const previousTrips = [...tripsRef.current];
         setTrips(prev => {
             const filtered = prev.filter(t => t.id !== id);
             syncSet(SYNC_KEYS.TRIPS, filtered);
             return filtered;
         });
-
         try {
             await api.deleteTrip(id);
+            notify('✓ Viaje eliminado', 'success');
         } catch (error) {
+            setTrips(previousTrips);
+            syncSet(SYNC_KEYS.TRIPS, previousTrips);
+            notify('✗ Error al eliminar el viaje', 'error');
             console.error('Error deleting trip:', error);
         }
-    }, []);
+    }, [notify]);
 
 const updateTrip = useCallback(async (trip: Trip) => {
     let previousTrip: Trip | undefined;
@@ -605,8 +689,40 @@ const updateTrip = useCallback(async (trip: Trip) => {
     });
 
     try {
-        await api.updateTrip(trip);
-        notify('✓ Viaje actualizado', 'success');
+        const prev = previousTrip;
+        const prevItems = prev?.items || [];
+        const finalItems = [];
+        // Items nuevos (id local) → POST; modificados → PUT; eliminados → DELETE
+        for (const item of trip.items || []) {
+            const old = prevItems.find(i => i.id === item.id);
+            if (!old) {
+                const created = await api.addTripItem(trip.id, item.label, item.isEssential);
+                if (item.checked) await api.updateTripItem(trip.id, created.id, { checked: true });
+                finalItems.push({ ...item, id: created.id });
+            } else {
+                if (old.checked !== item.checked || old.label !== item.label) {
+                    await api.updateTripItem(trip.id, item.id, { checked: item.checked, label: item.label });
+                }
+                finalItems.push(item);
+            }
+        }
+        for (const old of prevItems) {
+            if (!(trip.items || []).some(i => i.id === old.id)) await api.deleteTripItem(trip.id, old.id);
+        }
+        const garmentKey = (t?: Trip) => (t?.garments || []).map(g => g.id).sort().join(',');
+        const metaChanged = !prev || prev.destination !== trip.destination || prev.dateStart !== trip.dateStart
+            || prev.dateEnd !== trip.dateEnd || garmentKey(prev) !== garmentKey(trip);
+        let saved: Trip = { ...trip, items: finalItems };
+        if (metaChanged) {
+            const server = await api.updateTrip(trip);
+            saved = { ...server, items: finalItems };
+            notify('✓ Viaje actualizado', 'success');
+        }
+        setTrips(prevTrips => {
+            const updated = prevTrips.map(t => t.id === trip.id ? saved : t);
+            syncSet(SYNC_KEYS.TRIPS, updated);
+            return updated;
+        });
     } catch (error) {
         if (previousTrip) {
             setTrips(prev => {
@@ -626,7 +742,7 @@ const updateTrip = useCallback(async (trip: Trip) => {
         user, garments, looks, planner, trips, isLoading,
         setUser,
         handleAuthSuccess, handleMoodChange, handleUpdateUser,
-        addGarment, removeGarment, updateGarment,
+        addGarment, removeGarment, updateGarment, copyProductToWardrobe,
         saveLook, deleteLook,
         updatePlannerEntry,
         addTrip, deleteTrip, updateTrip,

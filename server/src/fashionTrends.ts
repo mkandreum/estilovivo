@@ -82,10 +82,11 @@ class FashionTrendService {
                     title: title || 'Tendencia de Moda',
                     category: category,
                     description: description || 'Descubre lo último en las pasarelas y el street style internacional.',
-                    image: image,
+                    // Sólo URLs http(s): el feed es externo y no es de confianza
+                    image: /^https?:\/\//i.test(image) ? image : 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&q=80&w=800',
                     tags: tags.slice(0, 3),
                     source: source,
-                    link: link
+                    link: /^https?:\/\//i.test(link) ? link : ''
                 };
             });
 

@@ -8,11 +8,17 @@ import { useLanguage } from '../src/context/LanguageContext';
 interface SuitcaseProps {
     trips: Trip[];
     garments: Garment[];
-    onAddTrip: (trip: Trip) => void;
+    onAddTrip: (trip: Trip) => Promise<Trip | undefined> | void;
     onDeleteTrip: (id: string) => void;
     onUpdateTrip: (trip: Trip) => void;
     isEmbedded?: boolean;
 }
+
+// Las fechas se guardan en ISO (YYYY-MM-DD); los viajes antiguos tienen texto ya formateado
+const formatTripDate = (value: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return value;
+    return new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' }).format(new Date(value + 'T12:00:00'));
+};
 
 const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDeleteTrip, onUpdateTrip, isEmbedded = false }) => {
     const { t } = useLanguage();
@@ -47,22 +53,17 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
     }, [activeTripId, activeTrip]);
 
     // --- HANDLERS ---
-    const handleCreateTrip = () => {
-        if (!newTripForm.destination || !newTripForm.dateStart) return;
+    const [isSavingTrip, setIsSavingTrip] = useState(false);
 
-        const formatDateStr = (isoStr: string) => {
-            const date = new Date(isoStr + 'T12:00:00');
-            const formatter = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' });
-            return formatter.format(date);
-        };
-
+    const handleCreateTrip = async () => {
+        if (!newTripForm.destination.trim() || !newTripForm.dateStart || isSavingTrip) return;
         const selectedGarments = garments.filter(g => newTripForm.garmentIds.includes(g.id));
 
         const newTrip: Trip = {
             id: `t-${Date.now()}`,
-            destination: newTripForm.destination,
-            dateStart: formatDateStr(newTripForm.dateStart),
-            dateEnd: newTripForm.dateEnd ? formatDateStr(newTripForm.dateEnd) : formatDateStr(newTripForm.dateStart),
+            destination: newTripForm.destination.trim(),
+            dateStart: newTripForm.dateStart,
+            dateEnd: newTripForm.dateEnd || newTripForm.dateStart,
             items: [
                 { id: `i-${Date.now()}-1`, label: 'Documentación', checked: false, isEssential: true },
                 { id: `i-${Date.now()}-2`, label: 'Neceser básico', checked: false, isEssential: true },
@@ -70,14 +71,22 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
             garments: selectedGarments
         };
 
-        onAddTrip(newTrip);
-        setNewTripForm({ destination: '', dateStart: '', dateEnd: '', garmentIds: [] });
-        setIsCreating(false);
-        setActiveTripId(newTrip.id);
+        setIsSavingTrip(true);
+        try {
+            // Se espera al servidor: el id definitivo es necesario para guardar el checklist
+            const saved = await onAddTrip(newTrip);
+            if (!saved) return;
+            setNewTripForm({ destination: '', dateStart: '', dateEnd: '', garmentIds: [] });
+            setIsCreating(false);
+            setActiveTripId(saved.id);
+        } finally {
+            setIsSavingTrip(false);
+        }
     };
 
     const handleDeleteTrip = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
+        if (!window.confirm('¿Eliminar este viaje y su checklist?')) return;
         onDeleteTrip(id);
         if (activeTripId === id) setActiveTripId(null);
     };
@@ -95,7 +104,7 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
         if (!newItemText.trim() || !activeTrip) return;
         const newItem: TripItem = {
             id: `i-${Date.now()}`,
-            label: newItemText,
+            label: newItemText.trim().slice(0, 120),
             checked: false,
             isEssential: false
         };
@@ -107,6 +116,11 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
 
         setNewItemText('');
         setIsAddingItem(false);
+    };
+
+    const removeItem = (itemId: string) => {
+        if (!activeTrip) return;
+        onUpdateTrip({ ...activeTrip, items: activeTrip.items.filter(i => i.id !== itemId) });
     };
 
     const toggleNewTripGarment = (garmentId: string) => {
@@ -170,7 +184,7 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
                                         <h3 className="text-xl font-bold text-[var(--text-primary)] mb-1">{trip.destination}</h3>
                                         <div className="flex items-center text-[var(--text-muted)] text-xs font-medium">
                                             <Calendar size={12} className="mr-1" />
-                                            <span>{trip.dateStart} - {trip.dateEnd}</span>
+                                            <span>{formatTripDate(trip.dateStart)} - {formatTripDate(trip.dateEnd)}</span>
                                         </div>
                                     </div>
                                     <button
@@ -274,11 +288,11 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
 
                 <div className="flex-shrink-0 px-6 pb-24 pt-3 bg-[var(--bg-card)] border-t border-[var(--border-light)]">
                     <button
-                        disabled={!newTripForm.destination || !newTripForm.dateStart}
+                        disabled={!newTripForm.destination.trim() || !newTripForm.dateStart || isSavingTrip}
                         onClick={handleCreateTrip}
                         className="w-full bg-primary disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl shadow-lg shadow-primary/30 transition-colors"
                     >
-                        Crear Maleta
+                        {isSavingTrip ? 'Creando…' : 'Crear Maleta'}
                     </button>
                 </div>
             </div>
@@ -310,7 +324,7 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
                                     <h2 className="text-3xl font-bold text-primary">{activeTrip.destination}</h2>
                                     <div className="flex items-center text-[var(--text-muted)] text-sm mt-1">
                                         <Calendar size={14} className="mr-1" />
-                                        <span>{activeTrip.dateStart} - {activeTrip.dateEnd}</span>
+                                        <span>{formatTripDate(activeTrip.dateStart)} - {formatTripDate(activeTrip.dateEnd)}</span>
                                     </div>
                                 </div>
                                 <div className="flex flex-col items-center bg-gray-50 p-2 rounded-xl border border-[var(--border-light)]">
@@ -369,6 +383,14 @@ const Suitcase: React.FC<SuitcaseProps> = ({ trips, garments, onAddTrip, onDelet
                                         <span className={`flex-1 transition-colors ${item.checked ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-primary)]'}`}>
                                             {item.label}
                                         </span>
+                                        <button
+                                            type="button"
+                                            aria-label={`Eliminar ${item.label}`}
+                                            onClick={(e) => { e.stopPropagation(); removeItem(item.id); }}
+                                            className="ml-2 p-1 text-[var(--text-muted)] hover:text-red-400"
+                                        >
+                                            <X size={14} />
+                                        </button>
                                     </li>
                                 ))}
                             </ul>

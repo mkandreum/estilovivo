@@ -84,6 +84,11 @@ export default defineConfig(({ mode }) => {
         'process.env.API_KEY': JSON.stringify(geminiKey || ''),
         'process.env.GEMINI_API_KEY': JSON.stringify(geminiKey || ''),
       },
+      optimizeDeps: {
+        // pose-detection importa backends opcionales no instalados (@mediapipe/pose, webgpu)
+        // que tumbaban el dev server; en build ya se marcan como external.
+        exclude: ['@tensorflow-models/pose-detection'],
+      },
       resolve: {
         alias: {
           '@': path.resolve(__dirname, '.'),

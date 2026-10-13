@@ -11,6 +11,10 @@
 - Backend Express + Prisma + SQLite
 - Deploy con Docker Compose
 
+> **App Android:** vive en un repositorio aparte, [mkandreum/estilovivoapp](https://github.com/mkandreum/estilovivoapp). Es un contenedor Capacitor que carga esta web en remoto, así que cada despliegue de la web llega también a la app.
+
+> **Auditoría:** ver [AUDITORIA.md](AUDITORIA.md).
+
 ## 🧱 Stack técnico
 
 - Frontend: React 19 + TypeScript + Vite

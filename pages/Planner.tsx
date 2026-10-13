@@ -6,6 +6,7 @@ import { useLanguage } from '../src/context/LanguageContext';
 import { useGlobalState } from '../src/context/GlobalStateContext';
 import { getCyclePeriod, isDateInCycle } from '../src/utils/cycleTracking';
 import CycleDayMarker from '../src/components/CycleDayMarker';
+import { toLocalDateStr } from '../src/utils/date';
 
 interface PlannerProps {
     looks: Look[];
@@ -35,16 +36,16 @@ const Planner: React.FC<PlannerProps> = ({ looks, plannerEntries, onUpdateEntry,
         return Array.from({ length: 7 }).map((_, i) => {
             const d = new Date(today);
             d.setDate(today.getDate() + mondayOffset + i + (weekOffset * 7));
-            return d.toISOString().split('T')[0];
+            return toLocalDateStr(d);
         });
     }, [weekOffset]);
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = toLocalDateStr();
 
     // Weekly header label
     const headerLabel = useMemo(() => {
-        const first = new Date(weekDates[0]);
-        const last = new Date(weekDates[6]);
+        const first = new Date(weekDates[0] + 'T12:00:00');
+        const last = new Date(weekDates[6] + 'T12:00:00');
         const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
         if (first.getMonth() === last.getMonth()) {
             return `${months[first.getMonth()]} ${first.getFullYear()}`;
@@ -133,7 +134,7 @@ const Planner: React.FC<PlannerProps> = ({ looks, plannerEntries, onUpdateEntry,
     const navigateDaily = (dir: number) => {
         const d = new Date((dailyViewDate || todayStr) + 'T12:00:00');
         d.setDate(d.getDate() + dir);
-        setDailyViewDate(d.toISOString().split('T')[0]);
+        setDailyViewDate(toLocalDateStr(d));
     };
 
     const goToDailyView = (date: string) => {
@@ -146,7 +147,7 @@ const Planner: React.FC<PlannerProps> = ({ looks, plannerEntries, onUpdateEntry,
     }, [dailyViewDate]);
 
     const dailyEntry = useMemo(() => getEntry(effectiveDailyDate), [effectiveDailyDate, plannerEntries]);
-    const dailyLook = useMemo(() => dailyEntry ? getLook(dailyEntry.lookId) : null, [dailyEntry]);
+    const dailyLook = useMemo(() => dailyEntry ? getLook(dailyEntry.lookId) : null, [dailyEntry, looks]);
 
     return (
         <div className="p-6 pb-24 relative h-full">

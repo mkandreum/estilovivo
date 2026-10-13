@@ -10,6 +10,7 @@ import { Look, UserState, ShopItem, Comment, Garment, ChatConversation, ChatMess
 import { useLanguage } from '../src/context/LanguageContext';
 import { useGlobalState } from '../src/context/GlobalStateContext';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { xpProgress } from '../src/utils/xp';
 import { pickPhoto, dataUrlToFile, CameraSource } from '../src/utils/cameraPhoto';
 
 interface StoryForm {
@@ -150,7 +151,11 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   const [deletingStoryId, setDeletingStoryId] = useState<string | null>(null);
 
+  const { user: globalUser, setUser: setGlobalUser, copyProductToWardrobe } = useGlobalState();
+  const activeUser = globalUser || user;
+
   const currentUserId = useMemo(() => {
+    if (activeUser?.id) return activeUser.id;
     const raw = localStorage.getItem('beyour_user');
     if (!raw) return null;
     try {
@@ -158,10 +163,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
     } catch {
       return null;
     }
-  }, []);
-
-  const { handleUpdateUser, user: globalUser } = useGlobalState();
-  const activeUser = globalUser || user;
+  }, [activeUser?.id]);
 
   const { t } = useLanguage();
 
@@ -176,9 +178,8 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
 
         let merged = [...validLocal];
         try {
-          const apiStories = await api.getStories();
-          const apiIds = new Set(apiStories.map(s => s.id));
-          merged = [...apiStories, ...validLocal.filter(s => !apiIds.has(s.id))];
+          // El servidor es la fuente de verdad: así desaparecen historias borradas o que nunca se publicaron
+          merged = await api.getStories();
         } catch (err) {
           console.warn('Could not load stories from API, using local cache:', err);
         }
@@ -318,16 +319,28 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
     }
   }, []);
 
+  // El XP lo otorga el servidor: refrescamos el usuario para mostrar el valor real
+  const refreshUserXp = useCallback(async () => {
+    try {
+      const prevLevel = activeUser?.level || 1;
+      const fresh = await api.getMe();
+      setGlobalUser(fresh);
+      return (fresh.level || 1) > prevLevel ? fresh.level : null;
+    } catch {
+      return null;
+    }
+  }, [activeUser?.level, setGlobalUser]);
+
   const addXp = (amount: number, reason: string) => {
     if (!activeUser) return;
-    const currentXp = activeUser.experiencePoints || 0;
-    const nextXp = currentXp + amount;
-    const currentLevel = activeUser.level || 1;
-    const nextLevel = Math.max(1, Math.floor(nextXp / 100) + 1);
-    const leveledUp = nextLevel > currentLevel;
-    handleUpdateUser({ ...activeUser, experiencePoints: nextXp, level: nextLevel });
-    setStoryToast(leveledUp ? `¡Subiste al nivel ${nextLevel}! +${amount} XP por ${reason}` : `+${amount} XP por ${reason}`);
-    scheduleToastClear(() => setStoryToast(null), 3200);
+    // Pequeño retardo: el servidor otorga el XP de forma asíncrona tras responder
+    window.setTimeout(async () => {
+      const newLevel = await refreshUserXp();
+      if (newLevel) {
+        setStoryToast(`¡Subiste al nivel ${newLevel}! +${amount} XP por ${reason}`);
+        scheduleToastClear(() => setStoryToast(null), 3200);
+      }
+    }, 600);
   };
 
   const scheduleToastClear = useCallback((fn: () => void, delay: number) => {
@@ -417,7 +430,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
       setConfettiActive(true);
       successImpact();
       if (activeUser && result.experiencePoints !== undefined) {
-        handleUpdateUser({ ...activeUser, experiencePoints: result.experiencePoints, level: result.level || Math.floor(result.experiencePoints / 100) + 1 });
+        setGlobalUser({ ...activeUser, experiencePoints: result.experiencePoints, level: result.level || activeUser.level });
       }
       setStoryToast(result.validationMessage || `+${currentChallenge.reward} XP por participar en el reto semanal`);
       scheduleToastClear(() => setStoryToast(null), 4000);
@@ -435,12 +448,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
     setConfirmDelete(null);
     try {
       await api.deleteChallengeSubmission(challengeSubmission.id);
-      if (activeUser) {
-        const reward = currentChallenge?.reward || 0;
-        const newXp = Math.max(0, (activeUser.experiencePoints || 0) - reward);
-        const newLevel = Math.floor(newXp / 100) + 1;
-        handleUpdateUser({ ...activeUser, experiencePoints: newXp, level: newLevel });
-      }
+      if (activeUser) refreshUserXp();
       setChallengeSubmission(null);
       setStoryToast('Participación eliminada. Puedes volver a participar.');
       scheduleToastClear(() => setStoryToast(null), 3200);
@@ -522,9 +530,14 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
         imageUrl: storyForm.type === 'image' ? storyForm.imageUrl : undefined,
         imageFile: storyForm.imageFile,
       });
-      setStories(prev => prev.map(s => s.id === newStory.id ? { ...s, id: saved.id } : s));
-    } catch (err) {
-      console.warn('Could not save story to server, using local:', err);
+      setStories(prev => prev.map(s => s.id === newStory.id ? { ...s, id: saved.id, imageUrl: saved.imageUrl || s.imageUrl } : s));
+    } catch (err: any) {
+      console.warn('Could not save story to server:', err);
+      setStories(prev => prev.filter(s => s.id !== newStory.id));
+      errorImpact();
+      setStoryToast(err?.message ? `No se pudo publicar la historia: ${err.message}` : 'No se pudo publicar la historia. Inténtalo de nuevo.');
+      scheduleToastClear(() => setStoryToast(null), 4000);
+      return;
     }
 
     addXp(15, 'subir una historia');
@@ -641,7 +654,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
   useEffect(() => {
     mountedRef.current = true;
     const token = localStorage.getItem('beyour_token');
-    const newSocket = io(getSocketOrigin(), { withCredentials: true, auth: { token }, transports: ['websocket', 'polling'], reconnectionAttempts: 10, reconnectionDelay: 1000, reconnectionDelayMax: 30000 });
+    const newSocket = io(getSocketOrigin(), { withCredentials: true, auth: (cb) => cb({ token: localStorage.getItem('beyour_token') || '' }), transports: ['websocket', 'polling'], reconnectionAttempts: 10, reconnectionDelay: 1000, reconnectionDelayMax: 30000 });
     setChatSocket(newSocket);
 
     // Join personal user room for receiving messages from other participants
@@ -740,7 +753,8 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
       const saved = await api.saveLookWithImage(
         publishDescription.trim() || 'Publicación',
         [],
-        imageBlob
+        imageBlob,
+        true // publicar en el feed = look público
       );
       setFeedLooks(prev => [saved, ...prev]);
       setIsPublishModalOpen(false);
@@ -772,11 +786,8 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
         }
         return l;
       }));
-      if (!likedBefore && result.liked) {
-        addXp(2, 'dar me gusta');
-        setStoryToast('Me gusta dado +2 XP');
-        scheduleToastClear(() => setStoryToast(null), 3200);
-      }
+      // El XP por "me gusta" lo recibe la autora del look (lo gestiona el servidor)
+      if (!likedBefore && result.liked) lightImpact();
     } catch (error) {
       console.error("Error toggling like:", error);
     }
@@ -797,30 +808,20 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
   };
 
   const handleShareFeed = async (product: ProductDisplayItem) => {
+    // Antes se creaba un look público con prendas de otra persona (el servidor ya no lo permite)
+    const url = `${window.location.origin}/social?tab=shop`;
+    const text = `Mira "${product.title}"${product.price ? ` por ${product.price}€` : ''} en EstiloVivo`;
     try {
-      // Create a public look from the product
-      const newLook: Look = {
-        id: '',
-        name: product.title,
-        garmentIds: [String(product.id)],
-        isPublic: true,
-        mood: 'Compartido desde tienda',
-        tags: ['compartido'],
-        createdAt: new Date().toISOString(),
-      };
-
-      const savedLook = await api.saveLook(newLook);
-
-      // Add to feed immediately
-      setFeedLooks(prev => [savedLook, ...prev]);
-
-      // Close the modal
+      if (navigator.share) {
+        await navigator.share({ title: product.title, text, url });
+      } else {
+        await navigator.clipboard.writeText(`${text} ${url}`);
+        setStoryToast('Enlace copiado al portapapeles');
+        scheduleToastClear(() => setStoryToast(null), 2500);
+      }
       setSelectedItem(null);
-
-      // Show success message
-      console.log('✓ Producto compartido en el feed');
-    } catch (error) {
-      console.error('Error sharing product to feed:', error);
+    } catch (error: any) {
+      if (error?.name !== 'AbortError') console.error('Error sharing product:', error);
     }
   };
 
@@ -1038,14 +1039,7 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
     if (!product) return;
     setActionLoadingId(fav.id);
     try {
-      await api.addGarment({
-        name: product.name,
-        category: product.category || 'top',
-        color: product.color || 'varios',
-        season: product.season || 'all',
-        brand: product.brand || undefined,
-        size: product.size || undefined,
-      });
+      if (!(await copyProductToWardrobe(product))) return;
       await api.toggleFavorite(undefined, product.id);
       setFavorites(prev => prev.filter(f => f.id !== fav.id));
       onNavigate('wardrobe');
@@ -1101,11 +1095,13 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
     if (chatAttachment) {
       try {
         const blob = await fetch(chatAttachment).then(r => r.blob());
-        const file = new File([blob], `chat-${Date.now()}.jpg`, { type: 'image/jpeg' });
+        const file = new File([blob], `chat-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
         const { imageUrl } = await api.uploadChatImage(file);
         serverImageUrl = imageUrl;
       } catch {
-        serverImageUrl = chatAttachment;
+        setStoryToast('No se pudo subir la imagen. Inténtalo de nuevo.');
+        scheduleToastClear(() => setStoryToast(null), 3200);
+        return;
       }
     }
     const nextMessage: ChatMessage = {
@@ -1147,6 +1143,11 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
         ...prev,
         [activeThread.id]: (prev[activeThread.id] || []).filter(m => m.id !== nextMessage.id)
       }));
+      // Se devuelve el texto al input para no perderlo
+      if (content !== '📷 Imagen adjunta') setMessageInput(content);
+      setStoryToast('No se pudo enviar el mensaje');
+      scheduleToastClear(() => setStoryToast(null), 3200);
+      return;
     }
 
     // Show notification for sales-related chat
@@ -1166,9 +1167,6 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
       // Add reaction
       return { ...prev, [messageId]: [...reactions, emoji] };
     });
-    addXp(1, 'reaccionar a mensaje');
-    setStoryToast('Reacción añadida +1 XP');
-    scheduleToastClear(() => setStoryToast(null), 3200);
   };
 
   // === UTILS ===
@@ -1231,12 +1229,12 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
                 <div className="mb-3">
                   <div className="flex justify-between text-[10px] text-teal-100 mb-1">
                     <span>Nivel {activeUser.level || 1}</span>
-                    <span>{(activeUser.experiencePoints || 0) % 100} / 100 XP</span>
+                    <span>{xpProgress(activeUser.experiencePoints, activeUser.level).current} / {xpProgress(activeUser.experiencePoints, activeUser.level).needed} XP</span>
                   </div>
                   <div className="h-1.5 bg-[var(--bg-card)]/20 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-[var(--bg-card)] rounded-full transition-all duration-500"
-                      style={{ width: `${(activeUser.experiencePoints || 0) % 100}%` }}
+                      style={{ width: `${xpProgress(activeUser.experiencePoints, activeUser.level).percentage}%` }}
                     />
                   </div>
                 </div>
@@ -1298,22 +1296,6 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
                     Ver historial
                   </button>
                 )}
-                <div className="flex gap-2 w-full justify-end mt-1">
-                  <button
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      try {
-                        await api.forceRotateChallenge();
-                        setStoryToast('🔄 Reto cambiado');
-                        scheduleToastClear(() => setStoryToast(null), 2000);
-                        window.location.reload();
-                      } catch { setStoryToast('Error al cambiar reto'); scheduleToastClear(() => setStoryToast(null), 2000); }
-                    }}
-                    className="text-[9px] font-medium text-white/50 hover:text-white underline"
-                  >
-                    Forzar cambio
-                  </button>
-                </div>
               </div>
             </div>
             <Sparkles className="text-white/20 absolute right-4 bottom-4 w-12 h-12" />
@@ -2018,13 +2000,17 @@ const Social: React.FC<SocialProps> = ({ user, garments, onNavigate, initialSubT
                                   {m.imageUrl ? (
                                     <img src={m.imageUrl} alt="Adjunto" className="w-full h-auto rounded-xl mb-2" />
                                   ) : null}
-                                  {m.content.includes('http') ? (
-                                    <a href={m.content} target="_blank" rel="noreferrer" className="text-white underline break-all">
-                                      {m.content}
-                                    </a>
-                                  ) : (
-                                    <span>{m.content}</span>
-                                  )}
+                                  <span className="whitespace-pre-wrap break-words">
+                                    {m.content.split(/(https?:\/\/[^\s]+)/g).map((part, idx) =>
+                                      /^https?:\/\/[^\s]+$/.test(part) ? (
+                                        <a key={idx} href={part} target="_blank" rel="noopener noreferrer" className={`underline break-all ${m.senderId === currentUserId ? 'text-white' : 'text-primary'}`}>
+                                          {part}
+                                        </a>
+                                      ) : (
+                                        <React.Fragment key={idx}>{part}</React.Fragment>
+                                      )
+                                    )}
+                                  </span>
                                 </div>
                                 <p className={`text-[9px] text-[var(--text-muted)] mt-0.5 ${m.senderId === currentUserId ? 'text-right mr-1' : 'ml-1'}`}>
                                   {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

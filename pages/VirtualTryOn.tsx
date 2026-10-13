@@ -887,7 +887,7 @@ export default function VirtualTryOn({ garments, onClose, user }: Props) {
       const res = await fetch(dataUrl); const blob = await res.blob()
       const name = lookName.trim() || `Look ${Date.now()}`
       const garmentIds = layers.map(l => l.garment.id)
-      const saved = await api.saveLookWithImage(name, garmentIds, blob)
+      const saved = await api.saveLookWithImage(name, garmentIds, blob, true)
       const lookId = saved?.id
       const shareUrl = lookId ? `${window.location.origin}/look/${lookId}` : `${window.location.origin}/social`
       const shareText = `Mira mi outfit en EstiloVivo! ${shareUrl}`

@@ -32,6 +32,7 @@ import {
   testEmailSchema,
   productSchema,
   lookSchema,
+  lookUpdateSchema,
   commentSchema,
   favoriteSchema,
   followSchema,
@@ -302,6 +303,29 @@ if (transporter) {
 }
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
+const DUMMY_BCRYPT_HASH = bcrypt.hashSync('estilovivo-dummy-password', 10);
+
+// Escapa texto de usuario antes de interpolarlo en HTML de emails
+const escapeHtml = (value: unknown) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
+// Sólo se aceptan URLs de imagen servidas por nosotros (evita javascript:, tracking externo, etc.)
+const isOwnUploadUrl = (value: unknown): value is string =>
+  typeof value === 'string' && /^\/api\/uploads\/[A-Za-z0-9._\/-]+$/.test(value) && !value.includes('..');
+
+// Administradores: IDs separados por comas en ADMIN_USER_IDS
+const ADMIN_USER_IDS = (process.env.ADMIN_USER_IDS || '').split(',').map(v => v.trim()).filter(Boolean);
+const isAdmin = (userId?: string) => !!userId && ADMIN_USER_IDS.includes(userId);
+
+// Borra un fichero subido sin lanzar si ya no existe
+const safeUnlink = (filePath?: string) => {
+  if (!filePath) return;
+  try { if (existsSync(filePath)) unlinkSync(filePath); } catch { /* ignore */ }
+};
 
 const findUsersByEmail = async (email: string) => {
   const normalizedEmail = normalizeEmail(email);
@@ -359,11 +383,18 @@ if (!existsSync(UPLOADS_DIR)) {
   mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
+// La extensión se deriva del MIME validado, nunca del nombre que envía el cliente
+const MIME_EXT: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+};
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOADS_DIR),
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    cb(null, `${file.fieldname}-${Date.now()}-${crypto.randomBytes(8).toString('hex')}${MIME_EXT[file.mimetype] || '.bin'}`);
   },
 });
 
@@ -416,35 +447,74 @@ const io = new Server(httpServer, {
   }
 });
 
-io.on('connection', (socket) => {
-  logger.info(`Socket connected: ${socket.id}`);
+const parseCookieHeader = (header?: string): Record<string, string> => {
+  const out: Record<string, string> = {};
+  (header || '').split(';').forEach(part => {
+    const idx = part.indexOf('=');
+    if (idx > 0) {
+      try { out[part.slice(0, idx).trim()] = decodeURIComponent(part.slice(idx + 1).trim()); } catch { /* ignore */ }
+    }
+  });
+  return out;
+};
 
-  socket.on('join_user', (userId) => {
-    const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.replace('Bearer ', '');
-    if (!token) return socket.emit('error', { message: 'Authentication required' });
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
-      if (decoded.userId !== userId) return socket.emit('error', { message: 'Cannot join another user room' });
-      socket.join(`user_${userId}`);
-      logger.info(`User ${userId} joined their personal room`);
-    } catch { socket.emit('error', { message: 'Invalid token' }); }
+// Autenticación obligatoria en el handshake: el userId sale del token, nunca del cliente
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token
+    || socket.handshake.headers?.authorization?.replace('Bearer ', '')
+    || parseCookieHeader(socket.handshake.headers?.cookie).auth_token;
+  if (!token) return next(new Error('Authentication required'));
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    if (!decoded?.userId) return next(new Error('Invalid token'));
+    socket.data.userId = decoded.userId;
+    next();
+  } catch {
+    next(new Error('Invalid token'));
+  }
+});
+
+const isConversationParticipant = async (conversationId: unknown, userId: string) => {
+  if (typeof conversationId !== 'string' || !conversationId) return false;
+  const p = await prisma.conversationParticipant.findUnique({
+    where: { conversationId_userId: { conversationId, userId } }
+  });
+  return !!p;
+};
+
+io.on('connection', (socket) => {
+  const authUserId: string = socket.data.userId;
+  logger.info(`Socket connected: ${socket.id}`);
+  // La sala personal se asigna siempre a partir del token
+  socket.join(`user_${authUserId}`);
+
+  socket.on('join_user', () => {
+    // Compatibilidad con clientes antiguos: la sala personal ya está asignada
+    socket.join(`user_${authUserId}`);
   });
 
-  socket.on('join_room', (roomId) => {
-    socket.join(roomId);
-    logger.info(`Socket ${socket.id} joined room ${roomId}`);
+  socket.on('join_room', async (roomId) => {
+    try {
+      if (await isConversationParticipant(roomId, authUserId)) socket.join(`conv_${roomId}`);
+    } catch (e) { logger.warn('join_room failed', { e }); }
   });
 
   socket.on('leave_room', (roomId) => {
-    socket.leave(roomId);
+    if (typeof roomId === 'string') socket.leave(`conv_${roomId}`);
   });
 
-  socket.on('typing', ({ roomId, userId }) => {
-    socket.to(roomId).emit('typing', { userId });
+  socket.on('typing', (payload) => {
+    const roomId = payload?.roomId;
+    if (typeof roomId === 'string' && socket.rooms.has(`conv_${roomId}`)) {
+      socket.to(`conv_${roomId}`).emit('typing', { userId: authUserId, roomId });
+    }
   });
 
-  socket.on('stop_typing', ({ roomId, userId }) => {
-    socket.to(roomId).emit('stop_typing', { userId });
+  socket.on('stop_typing', (payload) => {
+    const roomId = payload?.roomId;
+    if (typeof roomId === 'string' && socket.rooms.has(`conv_${roomId}`)) {
+      socket.to(`conv_${roomId}`).emit('stop_typing', { userId: authUserId, roomId });
+    }
   });
 
   socket.on('disconnect', () => {
@@ -452,13 +522,51 @@ io.on('connection', (socket) => {
   });
 });
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.disable('x-powered-by');
+
+// Cabeceras de seguridad básicas
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  if (NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
+// Los presets del probador incluyen miniaturas en base64
+app.use('/api/tryon-presets', express.json({ limit: '3mb' }));
+app.use(express.json({ limit: '200kb' }));
+app.use(express.urlencoded({ extended: true, limit: '200kb' }));
 app.use(cookieParser());
-app.use('/api/uploads', express.static(UPLOADS_DIR));
+app.use('/api/uploads', express.static(UPLOADS_DIR, {
+  dotfiles: 'deny',
+  index: false,
+  setHeaders: (res) => {
+    // Un upload nunca se interpreta como documento activo
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; sandbox");
+    res.setHeader('Cache-Control', 'public, max-age=604800');
+  },
+}));
+
+// Digital Asset Links para los deep links verificados de la app Android
+app.get('/.well-known/assetlinks.json', (req: Request, res: Response) => {
+  const fingerprints = (process.env.ANDROID_SHA256_FINGERPRINTS || '').split(',').map(v => v.trim()).filter(Boolean);
+  res.json(fingerprints.length === 0 ? [] : [{
+    relation: ['delegate_permission/common.handle_all_urls'],
+    target: {
+      namespace: 'android_app',
+      package_name: process.env.ANDROID_PACKAGE_NAME || 'com.estilovivo.app',
+      sha256_cert_fingerprints: fingerprints,
+    },
+  }]);
+});
 
 // Prevent browser/PWA from caching API responses (ensures fresh data per user)
 app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/uploads/')) return next();
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.set('Pragma', 'no-cache');
   next();
@@ -584,92 +692,124 @@ const invalidateRefreshTokens = async (userId: string) => {
   await prisma.refreshToken.deleteMany({ where: { userId } });
 };
 
+// Borra una imagen procesada y sus variantes (-medium / -thumb / -original)
+const unlinkImageVariants = (filename?: string | null) => {
+  if (!filename) return;
+  const name = path.basename(filename);
+  const base = name.replace(/-(medium|thumb|original)\.[a-z0-9]+$/i, '');
+  safeUnlink(path.join(UPLOADS_DIR, name));
+  if (base !== name) {
+    for (const suffix of ['-medium.webp', '-thumb.webp', '-original.webp', '-original.jpg', '-original.png', '-original.gif']) {
+      safeUnlink(path.join(UPLOADS_DIR, base + suffix));
+    }
+  }
+};
+
+// Convierte una URL /api/uploads/... en ruta de disco (o null si no es nuestra)
+const uploadUrlToPath = (url?: string | null) => {
+  if (!isOwnUploadUrl(url)) return null;
+  return path.join(UPLOADS_DIR, url.replace(/^\/api\/uploads\//, ''));
+};
+
+// ============= ACCESS HELPERS =============
+
+// Un look es visible si es propio, o público y de un perfil público / seguido
+const canViewLook = async (lookId: unknown, viewerId?: string) => {
+  if (typeof lookId !== 'string' || !lookId) return null;
+  const look = await prisma.look.findUnique({
+    where: { id: lookId },
+    select: { id: true, userId: true, isPublic: true, user: { select: { isProfilePublic: true } } }
+  });
+  if (!look) return null;
+  if (viewerId && look.userId === viewerId) return look;
+  if (!look.isPublic) return null;
+  if (look.user?.isProfilePublic === false) {
+    if (!viewerId) return null;
+    const follows = await prisma.follow.findUnique({
+      where: { followerId_followingId: { followerId: viewerId, followingId: look.userId } }
+    });
+    if (!follows) return null;
+  }
+  return look;
+};
+
+// Filtra una lista de IDs de prendas dejando sólo las del usuario
+const ownProductIds = async (ids: unknown, userId: string): Promise<string[]> => {
+  if (!Array.isArray(ids)) return [];
+  const clean = ids.filter((v): v is string => typeof v === 'string' && v.length > 0).slice(0, 200);
+  if (clean.length === 0) return [];
+  const rows = await prisma.product.findMany({ where: { id: { in: clean }, userId }, select: { id: true } });
+  return rows.map(r => r.id);
+};
+
+const parseJsonArray = (value: unknown): unknown[] | null => {
+  if (value === undefined || value === null || value === '') return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+// Procesa con sharp las imágenes subidas; si falla, se descarta el fichero (nunca se sirve el original sin validar)
+const processUploadedImages = async (files: Express.Multer.File[] | undefined, removeBg = false) => {
+  const out: { filename: string; url: string }[] = [];
+  for (const file of files || []) {
+    try {
+      const processed = await processImage(file.path, UPLOADS_DIR, file.filename, removeBg);
+      out.push({ filename: processed.medium, url: `/api/uploads/${processed.medium}` });
+    } catch (imgError) {
+      logger.error('Image processing failed', { error: imgError, filename: file.filename });
+    } finally {
+      safeUnlink(file.path);
+    }
+  }
+  return out;
+};
+
+// Re-codifica una imagen suelta (chat, retos) para eliminar contenido no-imagen y metadatos EXIF
+const reencodeSingleImage = async (file: Express.Multer.File, dir: string = UPLOADS_DIR): Promise<string | null> => {
+  try {
+    const sharp = (await import('sharp')).default;
+    const outName = `${path.basename(file.filename, path.extname(file.filename))}.webp`;
+    await sharp(file.path).rotate().resize(1600, 1600, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 85 }).toFile(path.join(dir, outName));
+    return outName;
+  } catch (e) {
+    logger.warn('Image re-encode failed', { e, filename: file.filename });
+    return null;
+  } finally {
+    safeUnlink(file.path);
+  }
+};
+
 // ============= HEALTH =============
 app.get('/api/health', async (req: Request, res: Response) => {
-  const dbUrl = process.env.DATABASE_URL || 'NOT SET';
   const healthCheck: any = {
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    environment: NODE_ENV,
     database: 'unknown',
-    databaseUrl: dbUrl.replace(/\/\/.*@/, '//***@'), // mask credentials if any
-    userCount: -1,
     version: process.env.npm_package_version || '0.0.0'
   };
 
   try {
     await prisma.$queryRaw`SELECT 1`;
     healthCheck.database = 'connected';
-    const countResult = await prisma.$queryRaw<Array<{ count: number }>>`SELECT COUNT(*) as count FROM User`;
-    healthCheck.userCount = Number(countResult[0]?.count ?? -1);
     res.status(200).json(healthCheck);
   } catch (error: any) {
     healthCheck.status = 'error';
     healthCheck.database = 'disconnected';
-    healthCheck.dbError = error?.message;
+    logger.error('Health check DB error', { error: error?.message });
     res.status(503).json(healthCheck);
-  }
-});
-
-app.get('/api/debug-db', authenticateToken, async (req: any, res: Response) => {
-  if (req.user.userId !== 'admin') return res.status(403).json({ error: 'Admin only' });
-  try {
-    const results = [];
-    try {
-      await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN "experiencePoints" INTEGER NOT NULL DEFAULT 0;`);
-      results.push('Added experiencePoints column');
-    } catch (e: any) {
-      results.push('Error adding experiencePoints: ' + e.message);
-    }
-    
-    try {
-      await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN "level" INTEGER NOT NULL DEFAULT 1;`);
-      results.push('Added level column');
-    } catch (e: any) {
-      results.push('Error adding level: ' + e.message);
-    }
-
-    try {
-      try { await prisma.$executeRawUnsafe(`ALTER TABLE "Product" ADD COLUMN "isWashing" BOOLEAN NOT NULL DEFAULT false;`); results.push('Added isWashing column'); } catch (e: any) { results.push('Error adding isWashing' + e.message); }
-      const tablesOptions = [`CREATE TABLE IF NOT EXISTS "Notification" ( "id" TEXT NOT NULL, "type" TEXT NOT NULL, "content" TEXT, "isRead" BOOLEAN NOT NULL DEFAULT false, "userId" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "Notification_pkey" PRIMARY KEY ("id") );`, `CREATE TABLE IF NOT EXISTS "Conversation" ( "id" TEXT NOT NULL, "itemId" TEXT, "itemTitle" TEXT, "itemImage" TEXT, "itemOwnerId" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "Conversation_pkey" PRIMARY KEY ("id") );`, `CREATE TABLE IF NOT EXISTS "ConversationParticipant" ( "id" TEXT NOT NULL, "conversationId" TEXT NOT NULL, "userId" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "ConversationParticipant_pkey" PRIMARY KEY ("id") );`, `CREATE TABLE IF NOT EXISTS "Message" ( "id" TEXT NOT NULL, "conversationId" TEXT NOT NULL, "senderId" TEXT NOT NULL, "content" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "Message_pkey" PRIMARY KEY ("id") );`];
-      for (const sql of tablesOptions) { try { await prisma.$executeRawUnsafe(sql); results.push('Created table'); } catch (e: any) { results.push('Error: ' + e.message); } }
-      const users = await prisma.$queryRaw`SELECT id, "experiencePoints", "level" FROM "User" LIMIT 1`;
-      results.push({ userCheck: users });
-    } catch (e: any) {
-      results.push('Error selecting users: ' + e.message);
-    }
-    
-    res.json({ success: true, results });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get('/api/server-logs', authenticateToken, async (req: any, res: Response) => {
-  if (req.user.userId !== 'admin') return res.status(403).json({ error: 'Admin only' });
-  try {
-    const logFile = path.join(process.cwd(), 'combined.log'); // Typical winston log file
-    const errFile = path.join(process.cwd(), 'error.log');
-    
-    let logs = '';
-    if (existsSync(errFile)) {
-      logs += '=== ERROR.LOG ===\n' + readFileSync(errFile, 'utf-8').slice(-5000) + '\n\n';
-    }
-    if (existsSync(logFile)) {
-      logs += '=== COMBINED.LOG ===\n' + readFileSync(logFile, 'utf-8').slice(-5000) + '\n\n';
-    }
-    
-    if (!logs) logs = 'No log files found in ' + process.cwd();
-    
-    res.type('text/plain').send(logs);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
   }
 });
 
 // Health check detallado (solo para desarrollo o admin)
 app.get('/api/health/detailed', authenticateToken, async (req: any, res: Response) => {
+  if (!isAdmin(req.user.userId)) return res.status(403).json({ error: 'Admin only' });
   try {
     const [userCount, productCount, lookCount] = await Promise.all([
       prisma.user.count(),
@@ -729,7 +869,7 @@ app.post('/api/auth/register', authLimiter, validate(registerSchema), async (req
     if (transporter) {
       const verifyUrl = `${getEmailFriendlyUrl('/auth?verifyToken=' + verificationToken)}`;
       const emailContent = `
-        <p class="greeting">¡Bienvenida a Estilo Vivo, ${user.name}! 🎉</p>
+        <p class="greeting">¡Bienvenida a Estilo Vivo, ${escapeHtml(user.name)}! 🎉</p>
         <p class="message">
           Gracias por unirte a nuestra comunidad. Para empezar a usar tu cuenta y acceder a todas nuestras funciones, 
           verifica tu correo electrónico haciendo clic en el botón de abajo.
@@ -772,7 +912,7 @@ app.post('/api/auth/register', authLimiter, validate(registerSchema), async (req
       user.isVerified = true;
     }
 
-    const { password: _, ...safe } = user;
+    const { password: _, verificationToken: _vt, resetToken: _rt, resetTokenExpiry: _rte, ...safe } = user;
     if (emailSent) {
       logger.info('User registered (pending verification)', { userId: user.id, email: user.email });
       res.status(201).json({
@@ -804,7 +944,9 @@ app.post('/api/auth/login', loginLimiter, validate(loginSchema), async (req: Req
     const candidates = await findUsersByEmail(normalizedEmail);
 
     if (candidates.length === 0) {
-      logger.warn('Login failed: User not found', { email: normalizedEmail });
+      // Igualamos el tiempo de respuesta para no revelar qué emails existen
+      await bcrypt.compare(password, DUMMY_BCRYPT_HASH);
+      logger.warn('Login failed: User not found');
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -837,7 +979,7 @@ app.post('/api/auth/login', loginLimiter, validate(loginSchema), async (req: Req
 
     const { accessToken, refreshToken } = await issueTokenPair(user.id, res);
 
-    const { password: _, _count, ...safe } = user;
+    const { password: _, _count, verificationToken: _vt, resetToken: _rt, resetTokenExpiry: _rte, ...safe } = user;
     logger.info('User logged in', { userId: user.id });
     res.json({
       user: { ...safe, followersCount: _count.followers, followingCount: _count.following },
@@ -847,7 +989,7 @@ app.post('/api/auth/login', loginLimiter, validate(loginSchema), async (req: Req
     });
   } catch (error: any) {
     logger.error('Login error', { error });
-    res.status(500).json({ error: `Error en login: ${error.message || 'Error interno'}` });
+    res.status(500).json({ error: 'Error interno en el inicio de sesión' });
   }
 });
 
@@ -858,8 +1000,8 @@ app.post('/api/auth/resend-verification', authLimiter, validate(resendVerificati
 
     const user = (await findUsersByEmail(normalizedEmail))[0];
 
-    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-    if (user.isVerified) return res.status(400).json({ error: 'La cuenta ya está verificada' });
+    // Respuesta genérica: no revela si el email existe o ya está verificado
+    if (!user || user.isVerified) return res.json({ success: true });
 
     if (!transporter) {
       logger.error('Resend verification blocked: SMTP not configured', { userId: user.id, email: user.email });
@@ -874,7 +1016,7 @@ app.post('/api/auth/resend-verification', authLimiter, validate(resendVerificati
 
     const verifyUrl = `${getEmailFriendlyUrl('/auth?verifyToken=' + verificationToken)}`;
     const emailContent = `
-      <p class="greeting">Hola ${user.name},</p>
+      <p class="greeting">Hola ${escapeHtml(user.name)},</p>
       <p class="message">
         Hemos recibido tu solicitud para reenviar el enlace de verificación de correo. 
         Por favor, confirma tu dirección de correo electrónico haciendo clic en el botón de abajo para activar todas las funciones de tu cuenta.
@@ -950,7 +1092,7 @@ app.post('/api/auth/refresh', validate(refreshSchema), async (req: Request, res:
     await prisma.refreshToken.delete({ where: { id: storedToken.id } });
     const { accessToken, refreshToken: newRefreshToken } = await issueTokenPair(storedToken.userId, res);
 
-    const { password: _, ...safe } = storedToken.user;
+    const { password: _, verificationToken: _vt, resetToken: _rt, resetTokenExpiry: _rte, ...safe } = storedToken.user;
     res.json({
       token: accessToken,
       refreshToken: newRefreshToken,
@@ -975,20 +1117,25 @@ app.post('/api/auth/change-password', authenticateToken, validate(changePassword
     const isMatch = await bcrypt.compare(currentPassword, user.password);
     if (!isMatch) return res.status(400).json({ error: 'invalidCurrentPassword' });
 
+    if (currentPassword === newPassword) return res.status(400).json({ error: 'samePassword' });
+
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({
       where: { id: userId },
       data: { password: hashedPassword }
     });
 
-    res.json({ success: true });
+    // Cierra el resto de sesiones y entrega un par nuevo a la sesión actual
+    await invalidateRefreshTokens(userId);
+    const { accessToken, refreshToken } = await issueTokenPair(userId, res);
+    res.json({ success: true, token: accessToken, refreshToken });
   } catch (error) {
     res.status(500).json({ error: 'Error changing password' });
   }
 });
 
 app.post('/api/auth/test-email', authenticateToken, validate(testEmailSchema), async (req: any, res: Response) => {
-  if (req.user.userId !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (!isAdmin(req.user.userId)) return res.status(403).json({ error: 'Admin only' });
   if (!transporter) return res.status(503).json({ error: 'SMTP not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS.' });
   try {
     await transporter.verify();
@@ -1034,7 +1181,7 @@ app.post('/api/auth/forgot-password', authLimiter, validate(forgotPasswordSchema
     }
 
     const emailContent = `
-      <p class="greeting">Hola ${user.name},</p>
+      <p class="greeting">Hola ${escapeHtml(user.name)},</p>
       <p class="message">
         Hemos recibido una solicitud para restablecer tu contraseña en Estilo Vivo. 
         Si no fuiste tú, puedes ignorar este correo.
@@ -1087,6 +1234,7 @@ app.post('/api/auth/reset-password', authLimiter, validate(resetPasswordSchema),
         resetTokenExpiry: null
       }
     });
+    await invalidateRefreshTokens(user.id);
 
     res.json({ success: true });
   } catch (error) {
@@ -1106,12 +1254,12 @@ const handleResetTokenRedirect = async (req: Request, res: Response) => {
     });
 
     if (!user) {
-      logger.warn('GET /reset-password/:token: Invalid or expired token attempt', { token });
+      logger.warn('GET /reset-password/:token: Invalid or expired token attempt');
       return res.redirect(`${getFrontendUrl()}/auth?error=invalid_token`);
     }
 
     logger.info('GET /reset-password/:token: Valid token redirection', { userId: user.id });
-    res.redirect(`${getFrontendUrl()}/auth?token=${token}&type=reset`);
+    res.redirect(`${getFrontendUrl()}/auth?token=${encodeURIComponent(token)}&type=reset`);
   } catch (error) {
     logger.error('Error in GET /reset-password/:token', { error });
     res.redirect(`${getFrontendUrl()}/auth?error=server_error`);
@@ -1153,6 +1301,7 @@ app.post('/reset-password', authLimiter, async (req: Request, res: Response) => 
         resetTokenExpiry: null
       }
     });
+    await invalidateRefreshTokens(user.id);
 
     logger.info('POST /reset-password: Password reset successfully', { userId: user.id });
     res.json({ success: true });
@@ -1194,11 +1343,26 @@ app.delete('/api/auth/profile', authenticateToken, async (req: any, res: Respons
     // Invalidate all refresh tokens before deleting
     await invalidateRefreshTokens(userId);
 
+    // Recoge las imágenes del usuario para borrarlas del disco (RGPD)
+    const [productImages, lookImages, owner, submissions, stories, messages] = await Promise.all([
+      prisma.productImage.findMany({ where: { product: { userId } }, select: { filename: true } }),
+      prisma.lookImage.findMany({ where: { look: { userId } }, select: { filename: true } }),
+      prisma.user.findUnique({ where: { id: userId }, select: { avatar: true, fullBodyAvatar: true } }),
+      prisma.challengeSubmission.findMany({ where: { userId }, select: { imageUrl: true } }),
+      prisma.story.findMany({ where: { userId }, select: { imageUrl: true } }),
+      prisma.message.findMany({ where: { senderId: userId, imageUrl: { not: null } }, select: { imageUrl: true } }),
+    ]);
+
     // Cascading deletes in Prisma will handle products, looks, etc.
     await prisma.user.delete({
       where: { id: userId }
     });
 
+    for (const img of [...productImages, ...lookImages]) unlinkImageVariants(img.filename);
+    for (const url of [owner?.avatar, owner?.fullBodyAvatar, ...submissions.map(s => s.imageUrl), ...stories.map(s => s.imageUrl), ...messages.map(m => m.imageUrl)]) {
+      const p = uploadUrlToPath(url);
+      if (p) safeUnlink(p);
+    }
     res.clearCookie('auth_token');
     logger.info('User deleted account successfully', { userId });
     res.json({ success: true });
@@ -1216,7 +1380,7 @@ app.get('/api/auth/me', authenticateToken, async (req: any, res: Response) => {
       include: { _count: { select: { followers: true, following: true, products: true, looks: true } } }
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
-    const { password: _, _count, ...safe } = user;
+    const { password: _, _count, verificationToken: _vt, resetToken: _rt, resetTokenExpiry: _rte, ...safe } = user;
     res.json({
       ...safe,
       followersCount: _count.followers,
@@ -1263,15 +1427,27 @@ app.put('/api/auth/profile', authenticateToken, upload.fields([{ name: 'avatar',
     if (styleStyles !== undefined) updateData.styleStyles = styleStyles;
     if (styleOccasions !== undefined) updateData.styleOccasions = styleOccasions;
     if (styleFabrics !== undefined) updateData.styleFabrics = styleFabrics;
-    if (avatarFile) updateData.avatar = `/api/uploads/${avatarFile.filename}`;
-    if (fullBodyFile) updateData.fullBodyAvatar = `/api/uploads/${fullBodyFile.filename}`;
+    const previous = await prisma.user.findUnique({ where: { id: req.user.userId }, select: { avatar: true, fullBodyAvatar: true } });
+    if (avatarFile) {
+      const stored = await reencodeSingleImage(avatarFile);
+      if (!stored) return res.status(400).json({ error: 'No se pudo procesar la foto de perfil' });
+      updateData.avatar = `/api/uploads/${stored}`;
+    }
+    if (fullBodyFile) {
+      const stored = await reencodeSingleImage(fullBodyFile);
+      if (!stored) return res.status(400).json({ error: 'No se pudo procesar la foto de cuerpo entero' });
+      updateData.fullBodyAvatar = `/api/uploads/${stored}`;
+    }
 
     const user = await prisma.user.update({
       where: { id: req.user.userId },
       data: updateData,
       include: { _count: { select: { followers: true, following: true } } }
     });
-    const { password: _, _count, ...safe } = user;
+    // Borra las imágenes anteriores reemplazadas
+    if (updateData.avatar && isOwnUploadUrl(previous?.avatar)) safeUnlink(path.join(UPLOADS_DIR, path.basename(previous!.avatar!)));
+    if (updateData.fullBodyAvatar && isOwnUploadUrl(previous?.fullBodyAvatar)) safeUnlink(path.join(UPLOADS_DIR, path.basename(previous!.fullBodyAvatar!)));
+    const { password: _, _count, verificationToken: _vt, resetToken: _rt, resetTokenExpiry: _rte, ...safe } = user;
     res.json({ ...safe, followersCount: _count.followers, followingCount: _count.following });
   } catch (error) {
     logger.error('Error occurred', { error });
@@ -1281,15 +1457,24 @@ app.put('/api/auth/profile', authenticateToken, upload.fields([{ name: 'avatar',
 
 app.put('/api/auth/preferences', authenticateToken, async (req: any, res: Response) => {
   try {
-    const allowed = ['cycleTracking', 'musicSync', 'emailNotifications', 'emailChat', 'emailFollows', 'emailWashing', 'emailChallenges', 'themePreset', 'customColor', 'isProfilePublic', 'styleColors', 'styleStyles', 'styleOccasions', 'styleFabrics', 'locationName', 'darkModeSetting', 'fontSize', 'highContrast', 'language', 'dialect'];
+    const booleanKeys = ['cycleTracking', 'musicSync', 'emailNotifications', 'emailChat', 'emailFollows', 'emailWashing', 'emailChallenges', 'isProfilePublic', 'highContrast'];
+    const stringKeys = ['themePreset', 'customColor', 'styleColors', 'styleStyles', 'styleOccasions', 'styleFabrics', 'locationName', 'darkModeSetting', 'fontSize', 'language', 'dialect'];
     const updateData: any = {};
-    for (const key of allowed) {
-      if (req.body[key] !== undefined) {
-        const val = req.body[key];
-        if (typeof val === 'boolean') updateData[key] = val;
-        else if (typeof val === 'string') updateData[key] = val === 'true' || val === '1' ? true : val === 'false' || val === '0' ? false : val;
-        else updateData[key] = val;
-      }
+    for (const key of booleanKeys) {
+      const val = req.body[key];
+      if (val === undefined) continue;
+      if (typeof val === 'boolean') updateData[key] = val;
+      else if (val === 'true' || val === '1') updateData[key] = true;
+      else if (val === 'false' || val === '0') updateData[key] = false;
+      else return res.status(400).json({ error: `Invalid value for ${key}` });
+    }
+    for (const key of stringKeys) {
+      const val = req.body[key];
+      if (val === undefined) continue;
+      if (val === null) { updateData[key] = null; continue; }
+      const str = Array.isArray(val) ? JSON.stringify(val) : typeof val === 'string' ? val : null;
+      if (str === null || str.length > 2000) return res.status(400).json({ error: `Invalid value for ${key}` });
+      updateData[key] = str;
     }
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ error: 'No valid preferences provided' });
@@ -1298,7 +1483,7 @@ app.put('/api/auth/preferences', authenticateToken, async (req: any, res: Respon
       where: { id: req.user.userId },
       data: updateData,
     });
-    const { password: _, ...safe } = user;
+    const { password: _, verificationToken: _vt, resetToken: _rt, resetTokenExpiry: _rte, ...safe } = user;
     res.json(safe);
   } catch (error) {
     logger.error('Error occurred', { error });
@@ -1311,7 +1496,8 @@ app.put('/api/auth/preferences', authenticateToken, async (req: any, res: Respon
 app.get('/api/products', authenticateToken, async (req: any, res: Response) => {
   try {
     const { cursor, limit = '20' } = req.query;
-    const take = Math.min(100, parseInt(limit as string) || 20) + 1;
+    const pageSize = Math.max(1, Math.min(100, parseInt(limit as string) || 20));
+    const take = pageSize + 1;
 
     const products = await prisma.product.findMany({
       where: { userId: req.user.userId },
@@ -1321,7 +1507,7 @@ app.get('/api/products', authenticateToken, async (req: any, res: Response) => {
       ...(cursor ? { cursor: { id: cursor as string }, skip: 1 } : {}),
     });
 
-    const hasMore = products.length > parseInt(limit as string);
+    const hasMore = products.length > pageSize;
     const items = hasMore ? products.slice(0, -1) : products;
     const nextCursor = hasMore ? items[items.length - 1]?.id : null;
 
@@ -1332,7 +1518,7 @@ app.get('/api/products', authenticateToken, async (req: any, res: Response) => {
       stack: error.stack,
       userId: req.user.userId
     });
-    res.status(500).json({ error: 'Error fetching products', detail: error.message });
+    res.status(500).json({ error: 'Error fetching products' });
   }
 });
 
@@ -1353,6 +1539,7 @@ app.get('/api/products/shop', authenticateToken, async (req: any, res: Response)
       where,
       include: { images: true, user: { select: { id: true, name: true, avatar: true } } },
       orderBy: { createdAt: 'desc' },
+      take: 200,
     });
     res.json(products);
   } catch (error) {
@@ -1376,29 +1563,14 @@ app.post('/api/products', authenticateToken, upload.array('images', 5), validate
       }
     }
 
-    // Process images with sharp
-    const processedImages = [];
-    if (files && files.length > 0) {
-      for (const file of files) {
-        try {
-          const processed = await processImage(file.path, UPLOADS_DIR, file.filename, true);
-          processedImages.push({
-            filename: processed.medium,
-            url: `/api/uploads/${processed.medium}`,
-            thumbnail: `/api/uploads/${processed.thumbnail}`,
-            original: `/api/uploads/${processed.original}`,
-          });
-          // Delete original uploaded file
-          unlinkSync(file.path);
-        } catch (imgError) {
-          logger.error('Image processing failed', { error: imgError, filename: file.filename });
-          try { unlinkSync(file.path); } catch { /* file may not exist */ }
-          processedImages.push({
-            filename: file.filename,
-            url: `/api/uploads/${file.filename}`,
-          });
-        }
-      }
+    const processedImages = await processUploadedImages(files, true);
+    if (files && files.length > 0 && processedImages.length === 0) {
+      return res.status(400).json({ error: 'No se pudo procesar la imagen. Prueba con otra foto (JPG, PNG o WEBP).' });
+    }
+
+    const parsedPrice = price !== undefined && price !== null && price !== '' ? parseFloat(price) : null;
+    if (parsedPrice !== null && (isNaN(parsedPrice) || parsedPrice < 0 || parsedPrice > 100000)) {
+      return res.status(400).json({ error: 'Precio inválido' });
     }
 
     const product = await prisma.product.create({
@@ -1411,7 +1583,7 @@ app.post('/api/products', authenticateToken, upload.array('images', 5), validate
         size: size || null,
         condition: condition || 'new',
         description: description || null,
-        price: price ? parseFloat(price) : null,
+        price: parsedPrice,
         forSale: forSale === 'true' || forSale === true,
         isWashing: isWashing === 'true' || isWashing === true,
         userId: req.user.userId,
@@ -1463,41 +1635,26 @@ app.put('/api/products/:id', authenticateToken, upload.array('images', 5), valid
     if (size !== undefined) updateData.size = size;
     if (condition !== undefined) updateData.condition = condition;
     if (description !== undefined) updateData.description = description;
-    if (price !== undefined && price !== null) updateData.price = parseFloat(price);
-    if (price === null) updateData.price = null;
+    if (price !== undefined) {
+      const parsedPrice = price === null || price === '' ? null : parseFloat(price);
+      if (parsedPrice !== null && (isNaN(parsedPrice) || parsedPrice < 0 || parsedPrice > 100000)) {
+        return res.status(400).json({ error: 'Precio inválido' });
+      }
+      updateData.price = parsedPrice;
+    }
     if (forSale !== undefined) updateData.forSale = forSale === 'true' || forSale === true;
     if (isWashing !== undefined) updateData.isWashing = isWashing === 'true' || isWashing === true;
-    if (usageCount !== undefined) updateData.usageCount = parseInt(usageCount);
-
-    const processedImages = [];
-    if (files && files.length > 0) {
-      for (const file of files) {
-        try {
-          const processed = await processImage(file.path, UPLOADS_DIR, file.filename, true);
-          processedImages.push({
-            filename: processed.medium,
-            url: `/api/uploads/${processed.medium}`,
-            thumbnail: `/api/uploads/${processed.thumbnail}`,
-            original: `/api/uploads/${processed.original}`,
-          });
-          unlinkSync(file.path);
-        } catch (imgError) {
-          logger.error('Image processing failed in PUT', { error: imgError, filename: file.filename });
-          try { unlinkSync(file.path); } catch { /* file may not exist */ }
-          processedImages.push({
-            filename: file.filename,
-            url: `/api/uploads/${file.filename}`,
-          });
-        }
-      }
+    if (usageCount !== undefined) {
+      const parsedUsage = parseInt(usageCount);
+      if (!isNaN(parsedUsage) && parsedUsage >= 0) updateData.usageCount = parsedUsage;
     }
+
+    const processedImages = await processUploadedImages(files, true);
 
     // Delete old images when new ones are uploaded (replace, not append)
     if (processedImages.length > 0) {
       const oldImages = await prisma.productImage.findMany({ where: { productId: id } });
-      for (const img of oldImages) {
-        try { unlinkSync(path.join(UPLOADS_DIR, img.filename)); } catch {}
-      }
+      for (const img of oldImages) unlinkImageVariants(img.filename);
       await prisma.productImage.deleteMany({ where: { productId: id } });
     }
 
@@ -1521,11 +1678,11 @@ app.put('/api/products/:id', authenticateToken, upload.array('images', 5), valid
         }
       });
       io.to(`user_${req.user.userId}`).emit('notification', notification);
-      await sendPreferenceEmail({
+      void sendPreferenceEmail({
         userId: req.user.userId,
         subject: 'Tu prenda está en la lavadora - Estilo Vivo',
         text: `La prenda "${product.name}" está ahora en la lavadora`,
-        html: `<p>La prenda <strong>${product.name}</strong> está ahora en la lavadora.</p>`,
+        html: `<p>La prenda <strong>${escapeHtml(product.name)}</strong> está ahora en la lavadora.</p>`,
         context: { type: 'WASHING', productId: product.id },
         preference: 'emailWashing'
       });
@@ -1544,11 +1701,8 @@ app.delete('/api/products/:id', authenticateToken, async (req: any, res: Respons
     const existing = await prisma.product.findUnique({ where: { id }, include: { images: true } });
     if (!existing || existing.userId !== req.user.userId) return res.status(403).json({ error: 'Not authorized' });
 
-    for (const img of existing.images) {
-      const filePath = path.join(UPLOADS_DIR, img.filename);
-      if (existsSync(filePath)) { try { unlinkSync(filePath); } catch (e) { /* ignore */ } }
-    }
     await prisma.product.delete({ where: { id } });
+    for (const img of existing.images) unlinkImageVariants(img.filename);
     res.json({ success: true });
   } catch (error) {
     logger.error('Error occurred', { error });
@@ -1577,7 +1731,8 @@ app.post('/api/products/:id/wear', authenticateToken, async (req: any, res: Resp
 app.get('/api/looks', authenticateToken, async (req: any, res: Response) => {
   try {
     const { cursor, limit = '20' } = req.query;
-    const take = Math.min(100, parseInt(limit as string) || 20) + 1;
+    const pageSize = Math.max(1, Math.min(100, parseInt(limit as string) || 20));
+    const take = pageSize + 1;
 
     const looks = await prisma.look.findMany({
       where: { userId: req.user.userId },
@@ -1592,7 +1747,7 @@ app.get('/api/looks', authenticateToken, async (req: any, res: Response) => {
       ...(cursor ? { cursor: { id: cursor as string }, skip: 1 } : {}),
     });
 
-    const hasMore = looks.length > parseInt(limit as string);
+    const hasMore = looks.length > pageSize;
     const items = hasMore ? looks.slice(0, -1) : looks;
 
     const likedIds = new Set((await prisma.like.findMany({
@@ -1616,7 +1771,8 @@ app.get('/api/looks', authenticateToken, async (req: any, res: Response) => {
 app.get('/api/looks/feed', optionalAuth, async (req: any, res: Response) => {
   try {
     const { cursor, limit = '20' } = req.query;
-    const take = Math.min(100, parseInt(limit as string) || 20) + 1;
+    const pageSize = Math.max(1, Math.min(100, parseInt(limit as string) || 20));
+    const take = pageSize + 1;
 
     const looks = await prisma.look.findMany({
       where: { isPublic: true, products: { none: { forSale: true } } },
@@ -1631,7 +1787,7 @@ app.get('/api/looks/feed', optionalAuth, async (req: any, res: Response) => {
       ...(cursor ? { cursor: { id: cursor as string }, skip: 1 } : {}),
     });
 
-    const hasMore = looks.length > parseInt(limit as string);
+    const hasMore = looks.length > pageSize;
     const items = hasMore ? looks.slice(0, -1) : looks;
     const lookIds = items.map(l => l.id);
 
@@ -1671,33 +1827,20 @@ app.post('/api/looks', authenticateToken, upload.array('images', 10), validate(l
   try {
     const { title, productIds, isPublic, mood, tags } = req.body;
     const files = req.files as Express.Multer.File[] | undefined;
-    const parsedIds = productIds ? (typeof productIds === 'string' ? JSON.parse(productIds) : productIds) : [];
-    if (!Array.isArray(parsedIds)) return res.status(400).json({ error: 'Invalid productIds' });
-    const parsedTags = tags ? (typeof tags === 'string' ? JSON.parse(tags) : tags) : [];
-    if (!Array.isArray(parsedTags)) return res.status(400).json({ error: 'Invalid tags' });
-
-    // Process images with sharp
-    const processedImages = [];
-    if (files && files.length > 0) {
-      for (const file of files) {
-        try {
-          const processed = await processImage(file.path, UPLOADS_DIR, file.filename);
-          processedImages.push({
-            filename: processed.medium,
-            url: `/api/uploads/${processed.medium}`,
-          });
-          // Delete original uploaded file
-          unlinkSync(file.path);
-        } catch (imgError) {
-          logger.error('Image processing failed', { error: imgError, filename: file.filename });
-          try { unlinkSync(file.path); } catch { /* file may not exist */ }
-          processedImages.push({
-            filename: file.filename,
-            url: `/api/uploads/${file.filename}`,
-          });
-        }
-      }
+    const rawIds = parseJsonArray(productIds);
+    if (!rawIds) {
+      (files || []).forEach(file => safeUnlink(file.path));
+      return res.status(400).json({ error: 'Invalid productIds' });
     }
+    const parsedTags = parseJsonArray(tags);
+    if (!parsedTags) {
+      (files || []).forEach(file => safeUnlink(file.path));
+      return res.status(400).json({ error: 'Invalid tags' });
+    }
+    // Sólo se pueden vincular prendas propias
+    const parsedIds = await ownProductIds(rawIds, req.user.userId);
+
+    const processedImages = await processUploadedImages(files);
 
     const look = await prisma.look.create({
       data: {
@@ -1705,7 +1848,7 @@ app.post('/api/looks', authenticateToken, upload.array('images', 10), validate(l
         userId: req.user.userId,
         isPublic: isPublic === 'true' || isPublic === true,
         mood: mood || null,
-        tags: parsedTags.length > 0 ? JSON.stringify(parsedTags) : null,
+        tags: parsedTags.length > 0 ? JSON.stringify(parsedTags.filter(t => typeof t === 'string').slice(0, 20)) : null,
         products: { connect: parsedIds.map((id: string) => ({ id })) },
         images: {
           create: processedImages.map(img => ({
@@ -1731,7 +1874,7 @@ app.post('/api/looks', authenticateToken, upload.array('images', 10), validate(l
   }
 });
 
-app.put('/api/looks/:id', authenticateToken, validate(lookSchema), async (req: any, res: Response) => {
+app.put('/api/looks/:id', authenticateToken, validate(lookUpdateSchema), async (req: any, res: Response) => {
   try {
     const { id } = req.params;
     const { title, isPublic, mood, productIds, tags } = req.body;
@@ -1743,12 +1886,15 @@ app.put('/api/looks/:id', authenticateToken, validate(lookSchema), async (req: a
     if (isPublic !== undefined) updateData.isPublic = isPublic === 'true' || isPublic === true;
     if (mood !== undefined) updateData.mood = mood;
     if (tags !== undefined) {
-      const parsedTags = typeof tags === 'string' ? JSON.parse(tags) : tags;
-      updateData.tags = Array.isArray(parsedTags) ? JSON.stringify(parsedTags) : null;
+      const parsedTags = parseJsonArray(tags);
+      if (!parsedTags) return res.status(400).json({ error: 'Invalid tags' });
+      updateData.tags = parsedTags.length > 0 ? JSON.stringify(parsedTags.filter(t => typeof t === 'string').slice(0, 20)) : null;
     }
-    if (productIds) {
-      try { updateData.products = { set: JSON.parse(productIds).map((pid: string) => ({ id: pid })) }; }
-      catch { return res.status(400).json({ error: 'Invalid productIds JSON' }); }
+    if (productIds !== undefined) {
+      const rawIds = parseJsonArray(productIds);
+      if (!rawIds) return res.status(400).json({ error: 'Invalid productIds JSON' });
+      const ids = await ownProductIds(rawIds, req.user.userId);
+      updateData.products = { set: ids.map((pid: string) => ({ id: pid })) };
     }
 
     const look = await prisma.look.update({
@@ -1765,9 +1911,10 @@ app.put('/api/looks/:id', authenticateToken, validate(lookSchema), async (req: a
 app.delete('/api/looks/:id', authenticateToken, async (req: any, res: Response) => {
   try {
     const { id } = req.params;
-    const existing = await prisma.look.findUnique({ where: { id } });
+    const existing = await prisma.look.findUnique({ where: { id }, include: { images: true } });
     if (!existing || existing.userId !== req.user.userId) return res.status(403).json({ error: 'Not authorized' });
     await prisma.look.delete({ where: { id } });
+    for (const img of existing.images) unlinkImageVariants(img.filename);
     res.json({ success: true });
   } catch (error) {
     logger.error('Error occurred', { error });
@@ -1800,10 +1947,16 @@ app.get('/api/tryon-presets', authenticateToken, async (req: any, res: Response)
 app.post('/api/tryon-presets', authenticateToken, async (req: any, res: Response) => {
   try {
     const { name, thumbnail, layers, rating, occasion } = req.body;
+    if (layers !== undefined && !Array.isArray(layers)) return res.status(400).json({ error: 'Invalid layers' });
+    if (thumbnail && (typeof thumbnail !== 'string' || !/^data:image\/(png|jpeg|webp);base64,/.test(thumbnail) && !isOwnUploadUrl(thumbnail))) {
+      return res.status(400).json({ error: 'Invalid thumbnail' });
+    }
+    const presetCount = await prisma.tryonPreset.count({ where: { userId: req.user.userId } });
+    if (presetCount >= 50) return res.status(400).json({ error: 'Has alcanzado el máximo de 50 looks guardados' });
     const preset = await prisma.tryonPreset.create({
       data: {
         userId: req.user.userId,
-        name: name || 'Look',
+        name: typeof name === 'string' && name.trim() ? name.trim().slice(0, 80) : 'Look',
         thumbnail: thumbnail || null,
         layers: JSON.stringify(layers || []),
         rating: rating || null,
@@ -1873,6 +2026,8 @@ app.post('/api/social/like', authenticateToken, async (req: any, res: Response) 
   try {
     const { lookId } = req.body;
     const userId = req.user.userId;
+    const look = await canViewLook(lookId, userId);
+    if (!look) return res.status(404).json({ error: 'Look no encontrado' });
     let liked = false;
     try {
       await prisma.like.create({ data: { userId, lookId } });
@@ -1884,20 +2039,23 @@ app.post('/api/social/like', authenticateToken, async (req: any, res: Response) 
         throw e;
       }
     }
+    // El XP de "recibir like" es para el autor del look (y se retira al quitar el like)
+    if (look.userId !== userId) {
+      if (liked) awardXp(prisma, look.userId, XP_VALUES.receiveLike).catch(() => {});
+      else removeXp(prisma, look.userId, XP_VALUES.receiveLike).catch(() => {});
+    }
     if (liked) {
-      awardXp(prisma, userId, XP_VALUES.receiveLike).catch(() => {});
-      const look = await prisma.look.findUnique({ where: { id: lookId }, select: { userId: true } });
-      if (look && look.userId !== userId) {
+      if (look.userId !== userId) {
         const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
         const notif = await prisma.notification.create({
-          data: { type: 'LIKE', content: `${me?.name || 'Alguien'} le gustó tu publicación`, userId: look.userId, relatedId: lookId }
+          data: { type: 'LIKE', content: `A ${me?.name || 'alguien'} le gustó tu publicación`, userId: look.userId, relatedId: lookId }
         });
         io.to(`user_${look.userId}`).emit('notification', notif);
-        await sendPreferenceEmail({
+        void sendPreferenceEmail({
           userId: look.userId,
           subject: 'A alguien le gustó tu publicación - Estilo Vivo',
-          text: `${me?.name || 'Alguien'} le gustó tu publicación`,
-          html: `<p><strong>${me?.name || 'Alguien'}</strong> le gustó tu publicación.</p>`,
+          text: `A ${me?.name || 'alguien'} le gustó tu publicación`,
+          html: `<p>A <strong>${escapeHtml(me?.name || 'Alguien')}</strong> le gustó tu publicación.</p>`,
           context: { type: 'LIKE', relatedId: lookId }
         });
       }
@@ -1912,6 +2070,12 @@ app.post('/api/social/like', authenticateToken, async (req: any, res: Response) 
 app.post('/api/social/comment', authenticateToken, validate(commentSchema), async (req: any, res: Response) => {
   try {
     const { lookId, content, parentId } = req.body;
+    const visibleLook = await canViewLook(lookId, req.user.userId);
+    if (!visibleLook) return res.status(404).json({ error: 'Look no encontrado' });
+    if (parentId) {
+      const parentComment = await prisma.comment.findUnique({ where: { id: parentId }, select: { lookId: true } });
+      if (!parentComment || parentComment.lookId !== lookId) return res.status(400).json({ error: 'Comentario padre inválido' });
+    }
     const comment = await prisma.comment.create({
       data: { userId: req.user.userId, lookId, content, parentId: parentId || null },
       include: { user: { select: { id: true, name: true, avatar: true } }, replies: { include: { user: { select: { id: true, name: true, avatar: true } } }, orderBy: { createdAt: 'asc' } } }
@@ -1923,11 +2087,11 @@ app.post('/api/social/comment', authenticateToken, validate(commentSchema), asyn
         data: { type: 'COMMENT', content: `${me?.name || 'Alguien'} comentó tu publicación`, userId: look.userId, relatedId: lookId }
       });
       io.to(`user_${look.userId}`).emit('notification', notif);
-      await sendPreferenceEmail({
+      void sendPreferenceEmail({
         userId: look.userId,
         subject: 'Nuevo comentario en tu publicación - Estilo Vivo',
         text: `${me?.name || 'Alguien'} comentó tu publicación`,
-        html: `<p><strong>${me?.name || 'Alguien'}</strong> comentó tu publicación.</p>`,
+        html: `<p><strong>${escapeHtml(me?.name || 'Alguien')}</strong> comentó tu publicación.</p>`,
         context: { type: 'COMMENT', relatedId: lookId }
       });
     }
@@ -1939,16 +2103,17 @@ app.post('/api/social/comment', authenticateToken, validate(commentSchema), asyn
           data: { type: 'COMMENT', content: `${me?.name || 'Alguien'} respondió a tu comentario`, userId: parent.userId, relatedId: lookId }
         });
         io.to(`user_${parent.userId}`).emit('notification', notif);
-        await sendPreferenceEmail({
+        void sendPreferenceEmail({
           userId: parent.userId,
           subject: 'Respuesta a tu comentario - Estilo Vivo',
           text: `${me?.name || 'Alguien'} respondió a tu comentario`,
-          html: `<p><strong>${me?.name || 'Alguien'}</strong> respondió a tu comentario.</p>`,
+          html: `<p><strong>${escapeHtml(me?.name || 'Alguien')}</strong> respondió a tu comentario.</p>`,
           context: { type: 'COMMENT_REPLY', relatedId: lookId }
         });
       }
     }
     res.status(201).json(comment);
+    awardXp(prisma, req.user.userId, XP_VALUES.comment).catch(() => {});
   } catch (error) {
     logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error adding comment' });
@@ -1957,6 +2122,7 @@ app.post('/api/social/comment', authenticateToken, validate(commentSchema), asyn
 
 app.get('/api/social/comments/:lookId', authenticateToken, async (req: any, res: Response) => {
   try {
+    if (!(await canViewLook(req.params.lookId, req.user.userId))) return res.status(404).json({ error: 'Look no encontrado' });
     const comments = await prisma.comment.findMany({
       where: { lookId: req.params.lookId, parentId: null },
       include: { user: { select: { id: true, name: true, avatar: true } }, replies: { include: { user: { select: { id: true, name: true, avatar: true } } }, orderBy: { createdAt: 'asc' } } },
@@ -1971,8 +2137,11 @@ app.get('/api/social/comments/:lookId', authenticateToken, async (req: any, res:
 
 app.delete('/api/social/comment/:id', authenticateToken, async (req: any, res: Response) => {
   try {
-    const existing = await prisma.comment.findUnique({ where: { id: req.params.id } });
-    if (!existing || existing.userId !== req.user.userId) return res.status(403).json({ error: 'Not authorized' });
+    const existing = await prisma.comment.findUnique({ where: { id: req.params.id }, include: { look: { select: { userId: true } } } });
+    // Puede borrar el autor del comentario o el dueño del look (moderación)
+    if (!existing || (existing.userId !== req.user.userId && existing.look?.userId !== req.user.userId)) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
     await prisma.comment.delete({ where: { id: req.params.id } });
     res.json({ success: true });
   } catch (error) {
@@ -1986,6 +2155,7 @@ app.post('/api/social/favorite', authenticateToken, validate(favoriteSchema), as
     const { lookId, productId } = req.body;
     const userId = req.user.userId;
     if (lookId) {
+      if (!(await canViewLook(lookId, userId))) return res.status(404).json({ error: 'Look no encontrado' });
       let favorited = false;
       try {
         await prisma.favorite.create({ data: { userId, lookId } });
@@ -1997,6 +2167,8 @@ app.post('/api/social/favorite', authenticateToken, validate(favoriteSchema), as
       }
       res.json({ favorited });
     } else if (productId) {
+      const product = await prisma.product.findUnique({ where: { id: productId }, select: { userId: true, forSale: true } });
+      if (!product || (product.userId !== userId && !product.forSale)) return res.status(404).json({ error: 'Prenda no encontrada' });
       let favorited = false;
       try {
         await prisma.favorite.create({ data: { userId, productId } });
@@ -2039,19 +2211,31 @@ app.post('/api/social/follow', authenticateToken, validate(followSchema), async 
     const userId = req.user.userId;
     if (userId === targetUserId) return res.status(400).json({ error: 'Cannot follow yourself' });
 
-    // Check if target has a private profile
     const targetUser = await prisma.user.findUnique({ where: { id: targetUserId }, select: { isProfilePublic: true } });
-    if (targetUser && targetUser.isProfilePublic === false) {
+    if (!targetUser) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    // Si ya le sigue, el botón siempre deja de seguir (también en perfiles privados)
+    const alreadyFollowing = await prisma.follow.findUnique({
+      where: { followerId_followingId: { followerId: userId, followingId: targetUserId } }
+    });
+    if (alreadyFollowing) {
+      await prisma.follow.delete({ where: { id: alreadyFollowing.id } });
+      await prisma.followRequest.deleteMany({ where: { requesterId: userId, targetId: targetUserId } });
+      return res.json({ following: false });
+    }
+
+    if (targetUser.isProfilePublic === false) {
       // Private profile: create a follow request instead of direct follow
       const existing = await prisma.followRequest.findUnique({
         where: { requesterId_targetId: { requesterId: userId, targetId: targetUserId } }
       });
       if (existing) {
-        if (existing.status === 'pending') return res.json({ requesting: true, message: 'Solicitud ya enviada' });
-        if (existing.status === 'rejected') {
-          await prisma.followRequest.update({ where: { id: existing.id }, data: { status: 'pending', createdAt: new Date() } });
-          return res.json({ requesting: true });
+        if (existing.status === 'pending') {
+          // Segundo toque: cancelar la solicitud
+          await prisma.followRequest.delete({ where: { id: existing.id } });
+          return res.json({ requesting: false, following: false });
         }
+        await prisma.followRequest.update({ where: { id: existing.id }, data: { status: 'pending', createdAt: new Date() } });
       } else {
         await prisma.followRequest.create({ data: { requesterId: userId, targetId: targetUserId } });
       }
@@ -2079,11 +2263,11 @@ app.post('/api/social/follow', authenticateToken, validate(followSchema), async 
         data: { type: 'FOLLOW', content: `${me?.name || 'Alguien'} te siguió`, userId: targetUserId, relatedId: userId }
       });
       io.to(`user_${targetUserId}`).emit('notification', notif);
-      await sendPreferenceEmail({
+      void sendPreferenceEmail({
         userId: targetUserId,
         subject: 'Nuevo seguidor en Estilo Vivo',
         text: `${me?.name || 'Alguien'} te siguió`,
-        html: `<p><strong>${me?.name || 'Alguien'}</strong> te siguió.</p><p><a href="${getEmailFriendlyUrl('/user/' + userId)}">Ver perfil</a></p>`,
+        html: `<p><strong>${escapeHtml(me?.name || 'Alguien')}</strong> te siguió.</p><p><a href="${getEmailFriendlyUrl('/user/' + encodeURIComponent(userId))}">Ver perfil</a></p>`,
         context: { type: 'FOLLOW' },
         preference: 'emailFollows'
       });
@@ -2115,9 +2299,13 @@ app.put('/api/social/follow-requests/:id/approve', authenticateToken, async (req
     const { id } = req.params;
     const request = await prisma.followRequest.findUnique({ where: { id } });
     if (!request || request.targetId !== req.user.userId) return res.status(403).json({ error: 'Not authorized' });
+    if (request.status !== 'pending') return res.status(400).json({ error: 'La solicitud ya fue gestionada' });
     await prisma.followRequest.update({ where: { id }, data: { status: 'approved' } });
-    // Create the follow relationship
-    await prisma.follow.create({ data: { followerId: request.requesterId, followingId: request.targetId } });
+    await prisma.follow.upsert({
+      where: { followerId_followingId: { followerId: request.requesterId, followingId: request.targetId } },
+      update: {},
+      create: { followerId: request.requesterId, followingId: request.targetId },
+    });
     // Notify requester
     const me = await prisma.user.findUnique({ where: { id: req.user.userId }, select: { name: true, avatar: true } });
     const notif = await prisma.notification.create({
@@ -2188,7 +2376,10 @@ app.get('/api/users/:id', authenticateToken, async (req: any, res: Response) => 
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const { password: _, _count, ...safe } = user;
+    const {
+      password: _, _count, email: _email, verificationToken: _vt, resetToken: _rt, resetTokenExpiry: _rte,
+      birthDate: _bd, cycleTracking: _ct, ...safe
+    } = user as any;
     const isFollowing = await prisma.follow.findUnique({
       where: { followerId_followingId: { followerId: viewerId, followingId: id } },
     });
@@ -2199,10 +2390,11 @@ app.get('/api/users/:id', authenticateToken, async (req: any, res: Response) => 
 
     // Server-side access control: hide products/looks for private profiles if not following
     const canViewContent = safe.isProfilePublic !== false || !!isFollowing || id === viewerId;
+    // Las prendas en venta son públicas (tienda); los looks dependen de la privacidad
 
     res.json({
       ...safe,
-      products: canViewContent ? safe.products : [],
+      products: safe.products,
       looks: canViewContent ? safe.looks : [],
       isProfilePublic: safe.isProfilePublic ?? true,
       followersCount: _count.followers,
@@ -2368,13 +2560,25 @@ app.post('/api/challenges/submit', authenticateToken, upload.fields([{ name: 'im
     if (!challengeId) return res.status(400).json({ error: 'Falta el ID del reto' });
 
     const challenge = await prisma.weeklyChallenge.findUnique({ where: { id: challengeId } });
-    if (!challenge) return res.status(404).json({ error: 'Reto no encontrado' });
-    if (!challenge.active) return res.status(400).json({ error: 'Este reto ya no está activo' });
+    const challengeError = !challenge
+      ? { status: 404, error: 'Reto no encontrado' }
+      : (!challenge.active || challenge.endDate < new Date())
+        ? { status: 400, error: 'Este reto ya no está activo' }
+        : null;
+    if (challengeError || !challenge) {
+      const fs = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+      safeUnlink(fs?.['image']?.[0]?.path);
+      return res.status(challengeError?.status || 404).json({ error: challengeError?.error || 'Reto no encontrado' });
+    }
 
     const existing = await prisma.challengeSubmission.findUnique({
       where: { userId_challengeId: { userId: req.user.userId, challengeId } }
     });
-    if (existing) return res.status(400).json({ error: 'Ya participaste en este reto' });
+    if (existing) {
+      const fs = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+      safeUnlink(fs?.['image']?.[0]?.path);
+      return res.status(400).json({ error: 'Ya participaste en este reto' });
+    }
 
     const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
     const imageFile = files?.['image']?.[0];
@@ -2383,18 +2587,22 @@ app.post('/api/challenges/submit', authenticateToken, upload.fields([{ name: 'im
       return res.status(400).json({ error: 'Debes subir una imagen para participar en el reto' });
     }
 
-    const desc = (description || '').trim();
-    if (!desc) {
-      return res.status(400).json({ error: 'Debes añadir una descripción de al menos 10 caracteres' });
-    }
-    if (desc.length < 10) {
-      return res.status(400).json({ error: 'La descripción debe tener al menos 10 caracteres' });
-    }
-    if (desc.length > 500) {
-      return res.status(400).json({ error: 'La descripción no puede superar los 500 caracteres' });
+    const desc = (typeof description === 'string' ? description : '').trim();
+    const descError = !desc
+      ? 'Debes añadir una descripción de al menos 10 caracteres'
+      : desc.length < 10
+        ? 'La descripción debe tener al menos 10 caracteres'
+        : desc.length > 500
+          ? 'La descripción no puede superar los 500 caracteres'
+          : null;
+    if (descError) {
+      safeUnlink(imageFile.path);
+      return res.status(400).json({ error: descError });
     }
 
     const analysis = await analyzeChallengeImage(imageFile.path);
+    const storedName = await reencodeSingleImage(imageFile);
+    if (!storedName) return res.status(400).json({ error: 'No se pudo procesar la imagen' });
 
     const challengeTag = (challenge.tag || '').toLowerCase();
     const needsUniformColor = challengeTag.includes('monocromo') || challengeTag.includes('color');
@@ -2404,8 +2612,8 @@ app.post('/api/challenges/submit', authenticateToken, upload.fields([{ name: 'im
       data: {
         userId: req.user.userId,
         challengeId,
-        imageUrl: `/api/uploads/${imageFile.filename}`,
-        description: description,
+        imageUrl: `/api/uploads/${storedName}`,
+        description: desc,
         verified,
         awarded: true,
       }
@@ -2444,6 +2652,9 @@ app.delete('/api/challenges/submissions/:id', authenticateToken, async (req: any
     }
 
     await prisma.challengeSubmission.delete({ where: { id: req.params.id } });
+    if (isOwnUploadUrl(submission.imageUrl)) {
+      safeUnlink(path.join(UPLOADS_DIR, path.basename(submission.imageUrl)));
+    }
     res.json({ success: true });
   } catch (error) {
     logger.error('Error deleting challenge submission', { error });
@@ -2452,7 +2663,7 @@ app.delete('/api/challenges/submissions/:id', authenticateToken, async (req: any
 });
 
 app.post('/api/challenges/force-rotate', authenticateToken, async (req: any, res: Response) => {
-  if (req.user.userId !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (!isAdmin(req.user.userId)) return res.status(403).json({ error: 'Admin only' });
   try {
     const now = new Date();
     const startOfToday = new Date(now);
@@ -2568,28 +2779,8 @@ app.get('/api/gamification/badges', authenticateToken, async (req: any, res: Res
 
 app.post('/api/gamification/check-achievements', authenticateToken, async (req: any, res: Response) => {
   try {
+    // checkAndUnlockAchievements ya otorga el XP y emite los eventos de socket
     const newlyUnlocked = await checkAndUnlockAchievements(prisma, req.user.userId, io);
-    for (const ach of newlyUnlocked) {
-      if (ach.xpReward > 0) {
-        const result = await awardXp(prisma, req.user.userId, ach.xpReward);
-        if (result.leveledUp) {
-          const progress = xpProgress(result.experiencePoints, result.level);
-          const user = await prisma.user.findUnique({
-            where: { id: req.user.userId },
-            include: { streak: true },
-          });
-          io?.to(`user_${req.user.userId}`).emit('level_up', {
-            level: result.level,
-            xp: result.experiencePoints,
-            xpCurrent: progress.current,
-            xpNeeded: progress.needed,
-            xpPercentage: Math.round(progress.percentage),
-            streak: user?.streak ? { loginCount: user.streak.loginCount, lastDate: user.streak.lastDate } : null,
-          });
-        }
-      }
-      io?.to(`user_${req.user.userId}`).emit('achievement_unlocked', ach);
-    }
     res.json({ newlyUnlocked });
   } catch (error) {
     logger.error('Error checking achievements', { error });
@@ -2629,7 +2820,10 @@ app.get('/api/trends', async (req: Request, res: Response) => {
 
 app.get('/api/planner/:userId', authenticateToken, async (req: any, res: Response) => {
   try {
-    const userId = req.params.userId === 'me' ? req.user.userId : req.params.userId;
+    if (req.params.userId !== 'me' && req.params.userId !== req.user.userId) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+    const userId = req.user.userId;
     const entries = await prisma.plannerEntry.findMany({
       where: { userId },
       include: { look: { include: { images: true, products: { include: { images: true } } } } }
@@ -2643,8 +2837,13 @@ app.get('/api/planner/:userId', authenticateToken, async (req: any, res: Respons
 
 app.post('/api/planner', authenticateToken, validate(plannerSchema), async (req: any, res: Response) => {
   try {
-    const { date, lookId, eventNote, userId } = req.body;
-    const targetUserId = (userId === 'me' || !userId) ? req.user.userId : userId;
+    const { date, lookId, eventNote } = req.body;
+    // El planner siempre es del usuario autenticado (antes se aceptaba userId del cliente)
+    const targetUserId = req.user.userId;
+    if (lookId) {
+      const ownLook = await prisma.look.findFirst({ where: { id: lookId, userId: targetUserId }, select: { id: true } });
+      if (!ownLook) return res.status(400).json({ error: 'Look no válido' });
+    }
 
     // Get previous entry to handle look change
     const previousEntry = await prisma.plannerEntry.findUnique({
@@ -2660,15 +2859,16 @@ app.post('/api/planner', authenticateToken, validate(plannerSchema), async (req:
     });
 
     // Decrement usage count for previous look's garments (if look changed)
-    if (previousEntry?.lookId && previousEntry.lookId !== lookId) {
+    const lookChanged = (previousEntry?.lookId || null) !== (lookId || null);
+    if (previousEntry?.lookId && lookChanged && previousEntry.look) {
       await prisma.product.updateMany({
-        where: { id: { in: previousEntry.look.products.map(p => p.id) } },
+        where: { id: { in: previousEntry.look.products.map(p => p.id) }, usageCount: { gt: 0 } },
         data: { usageCount: { decrement: 1 } }
       });
     }
 
-    // Increment usage count for garments in the newly assigned look
-    if (lookId) {
+    // Increment usage count only when the look actually changes (evita inflar el contador al editar la nota)
+    if (lookId && lookChanged) {
       const look = await prisma.look.findUnique({ where: { id: lookId }, include: { products: true } });
       if (look) {
         await prisma.product.updateMany({
@@ -2679,8 +2879,8 @@ app.post('/api/planner', authenticateToken, validate(plannerSchema), async (req:
     }
 
     res.json(entry);
-    // Fire-and-forget: award XP for planning the day
-    awardPoints(prisma, targetUserId, 'planner').catch(e => logger.warn('awardPoints failed', { e }));
+    // XP sólo al planificar un día nuevo (evita farmear XP re-guardando)
+    if (!previousEntry) awardPoints(prisma, targetUserId, 'planner').catch(e => logger.warn('awardPoints failed', { e }));
   } catch (error) {
     logger.error('Error occurred', { error });
     res.status(500).json({ error: 'Error updating planner' });
@@ -2693,9 +2893,10 @@ app.delete('/api/planner/:date', authenticateToken, async (req: any, res: Respon
       where: { userId_date: { userId: req.user.userId, date: req.params.date } },
       include: { look: { include: { products: true } } }
     });
-    if (existing?.look?.products?.length) {
+    if (!existing) return res.status(404).json({ error: 'Entrada no encontrada' });
+    if (existing.look?.products?.length) {
       await prisma.product.updateMany({
-        where: { id: { in: existing.look.products.map(p => p.id) } },
+        where: { id: { in: existing.look.products.map(p => p.id) }, usageCount: { gt: 0 } },
         data: { usageCount: { decrement: 1 } }
       });
     }
@@ -2711,10 +2912,13 @@ app.delete('/api/planner/:date', authenticateToken, async (req: any, res: Respon
 
 app.get('/api/trips/:userId', authenticateToken, async (req: any, res: Response) => {
   try {
-    const userId = req.params.userId === 'me' ? req.user.userId : req.params.userId;
+    if (req.params.userId !== 'me' && req.params.userId !== req.user.userId) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+    const userId = req.user.userId;
     const trips = await prisma.trip.findMany({
       where: { userId },
-      include: { items: true, garments: { include: { product: true } } },
+      include: { items: true, garments: { include: { product: { include: { images: true } } } } },
       orderBy: { dateStart: 'asc' }
     });
     const mapped = trips.map(trip => ({
@@ -2731,8 +2935,11 @@ app.get('/api/trips/:userId', authenticateToken, async (req: any, res: Response)
 app.post('/api/trips', authenticateToken, validate(tripSchema), async (req: any, res: Response) => {
   try {
     const { destination, dateStart, dateEnd, items, garmentIds } = req.body;
-    const garmentsData = Array.isArray(garmentIds)
-      ? { garments: { create: garmentIds.map((id: string) => ({ productId: id })) } }
+    const isoRe = /^\d{4}-\d{2}-\d{2}$/;
+    if (isoRe.test(dateStart) && isoRe.test(dateEnd) && dateEnd < dateStart) return res.status(400).json({ error: 'La fecha de vuelta debe ser posterior a la de ida' });
+    const ownGarments = await ownProductIds(garmentIds, req.user.userId);
+    const garmentsData = ownGarments.length > 0
+      ? { garments: { create: ownGarments.map((id: string) => ({ productId: id })) } }
       : {};
     const trip = await prisma.trip.create({
       data: {
@@ -2740,7 +2947,7 @@ app.post('/api/trips', authenticateToken, validate(tripSchema), async (req: any,
         items: { create: items ? items.map((i: any) => ({ label: i.label, checked: i.checked || false, isEssential: i.isEssential || false })) : [] },
         ...garmentsData
       },
-      include: { items: true, garments: { include: { product: true } } }
+      include: { items: true, garments: { include: { product: { include: { images: true } } } } }
     });
     res.status(201).json({
       ...trip,
@@ -2762,16 +2969,21 @@ app.put('/api/trips/:id', authenticateToken, validate(tripSchema), async (req: a
       ...(dateStart && { dateStart }),
       ...(dateEnd && { dateEnd })
     };
+    const newStart = dateStart || existing.dateStart;
+    const newEnd = dateEnd || existing.dateEnd;
+    const isoRe = /^\d{4}-\d{2}-\d{2}$/;
+    if (isoRe.test(newStart) && isoRe.test(newEnd) && newEnd < newStart) return res.status(400).json({ error: 'La fecha de vuelta debe ser posterior a la de ida' });
     if (Array.isArray(garmentIds)) {
+      const ownGarments = await ownProductIds(garmentIds, req.user.userId);
       updateData.garments = {
         deleteMany: {},
-        create: garmentIds.map((id: string) => ({ productId: id }))
+        create: ownGarments.map((id: string) => ({ productId: id }))
       };
     }
     const trip = await prisma.trip.update({
       where: { id: req.params.id },
       data: updateData,
-      include: { items: true, garments: { include: { product: true } } }
+      include: { items: true, garments: { include: { product: { include: { images: true } } } } }
     });
     res.json({
       ...trip,
@@ -2800,9 +3012,15 @@ app.put('/api/trips/:tripId/items/:itemId', authenticateToken, async (req: any, 
     const trip = await prisma.trip.findUnique({ where: { id: req.params.tripId } });
     if (!trip || trip.userId !== req.user.userId) return res.status(403).json({ error: 'Not authorized' });
     const { checked, label, isEssential } = req.body;
+    const existingItem = await prisma.tripItem.findFirst({ where: { id: req.params.itemId, tripId: trip.id } });
+    if (!existingItem) return res.status(404).json({ error: 'Item not found' });
     const item = await prisma.tripItem.update({
-      where: { id: req.params.itemId },
-      data: { ...(checked !== undefined && { checked }), ...(label !== undefined && { label }), ...(isEssential !== undefined && { isEssential }) }
+      where: { id: existingItem.id },
+      data: {
+        ...(typeof checked === 'boolean' && { checked }),
+        ...(typeof label === 'string' && label.trim() && { label: label.trim().slice(0, 120) }),
+        ...(typeof isEssential === 'boolean' && { isEssential }),
+      }
     });
     res.json(item);
   } catch (error) {
@@ -2815,8 +3033,10 @@ app.post('/api/trips/:tripId/items', authenticateToken, async (req: any, res: Re
   try {
     const trip = await prisma.trip.findUnique({ where: { id: req.params.tripId } });
     if (!trip || trip.userId !== req.user.userId) return res.status(403).json({ error: 'Not authorized' });
+    const label = typeof req.body.label === 'string' ? req.body.label.trim().slice(0, 120) : '';
+    if (!label) return res.status(400).json({ error: 'Label required' });
     const item = await prisma.tripItem.create({
-      data: { label: req.body.label, isEssential: req.body.isEssential || false, tripId: req.params.tripId }
+      data: { label, isEssential: req.body.isEssential === true, tripId: req.params.tripId }
     });
     res.json(item);
   } catch (error) {
@@ -2829,7 +3049,8 @@ app.delete('/api/trips/:tripId/items/:itemId', authenticateToken, async (req: an
   try {
     const trip = await prisma.trip.findUnique({ where: { id: req.params.tripId } });
     if (!trip || trip.userId !== req.user.userId) return res.status(403).json({ error: 'Not authorized' });
-    await prisma.tripItem.delete({ where: { id: req.params.itemId } });
+    const deleted = await prisma.tripItem.deleteMany({ where: { id: req.params.itemId, tripId: trip.id } });
+    if (deleted.count === 0) return res.status(404).json({ error: 'Item not found' });
     res.json({ success: true });
   } catch (error) {
     logger.error('Error occurred', { error });
@@ -2920,6 +3141,9 @@ app.post('/api/chat/conversations', authenticateToken, validate(conversationSche
     const recipientId = targetUserId || otherUserId;
     if (!recipientId) return res.status(400).json({ error: 'targetUserId required' });
     if (recipientId === req.user.userId) return res.status(400).json({ error: 'Cannot chat with yourself' });
+    const recipient = await prisma.user.findUnique({ where: { id: recipientId }, select: { id: true } });
+    if (!recipient) return res.status(404).json({ error: 'Usuario no encontrado' });
+    const safeItemImage = itemImage && (isOwnUploadUrl(itemImage) || /^https:\/\//.test(itemImage)) ? itemImage : null;
 
     let whereClause: any = {
       AND: [
@@ -2939,8 +3163,8 @@ app.post('/api/chat/conversations', authenticateToken, validate(conversationSche
     const conversation = await prisma.conversation.create({
       data: {
         itemId: itemId || null,
-        itemTitle: itemTitle || null,
-        itemImage: itemImage || null,
+        itemTitle: itemTitle ? String(itemTitle).slice(0, 200) : null,
+        itemImage: safeItemImage,
         itemOwnerId: recipientId,
         participants: { create: [{ userId: req.user.userId }, { userId: recipientId }] },
         ...(initialMessage ? {
@@ -2982,8 +3206,10 @@ app.get('/api/chat/conversations/:id/messages', authenticateToken, async (req: a
     const messages = await prisma.message.findMany({
       where: { conversationId: id },
       include: { sender: { select: { id: true, name: true, avatar: true } } },
-      orderBy: { createdAt: 'asc' }
+      orderBy: { createdAt: 'desc' },
+      take: 500,
     });
+    messages.reverse();
     res.json(messages);
   } catch (error) {
     logger.error('Error fetching messages', { error });
@@ -2995,8 +3221,9 @@ app.post('/api/chat/upload', authenticateToken, upload.single('image'), async (r
   try {
     const file = req.file;
     if (!file) return res.status(400).json({ error: 'No image provided' });
-    const url = `/api/uploads/${file.filename}`;
-    res.json({ imageUrl: url });
+    const storedName = await reencodeSingleImage(file);
+    if (!storedName) return res.status(400).json({ error: 'No se pudo procesar la imagen' });
+    res.json({ imageUrl: `/api/uploads/${storedName}` });
   } catch (error) {
     logger.error('Error uploading chat image', { error });
     res.status(500).json({ error: 'Error uploading image' });
@@ -3008,6 +3235,7 @@ app.post('/api/chat/conversations/:id/messages', authenticateToken, validate(mes
     const conversationId = req.params.id;
     const { content, imageUrl, productId } = req.body;
     if (!content && !imageUrl) return res.status(400).json({ error: 'content or imageUrl required' });
+    if (imageUrl && !isOwnUploadUrl(imageUrl)) return res.status(400).json({ error: 'Invalid imageUrl' });
 
     const participation = await prisma.conversationParticipant.findUnique({
       where: { conversationId_userId: { conversationId, userId: req.user.userId } }
@@ -3049,15 +3277,15 @@ app.post('/api/chat/conversations/:id/messages', authenticateToken, validate(mes
       if (transporter && otherUser?.email && otherUser.emailNotifications && otherUser.emailChat) {
         try {
           const emailContent = `
-            <p class="greeting">Nuevo mensaje de ${message.sender.name} 💬</p>
-            <p class="message">"${message.content}"</p>
+            <p class="greeting">Nuevo mensaje de ${escapeHtml(message.sender.name)} 💬</p>
+            <p class="message">"${escapeHtml(message.content.slice(0, 300))}"</p>
             <div style="text-align: center;">
               <a href="${getEmailFriendlyUrl('/social?tab=chat')}" class="button">Ver Conversación</a>
             </div>
           `;
           await sendMailWithRetry({
             to: otherUser.email,
-            subject: `💬 Nuevo mensaje de ${message.sender.name} - Estilo Vivo`,
+            subject: `💬 Nuevo mensaje de ${String(message.sender.name).replace(/[\r\n]/g, ' ')} - Estilo Vivo`,
             html: getEmailTemplate(emailContent, 'Nuevo Mensaje')
           });
         } catch (mailErr) {
@@ -3075,8 +3303,9 @@ app.post('/api/chat/conversations/:id/messages', authenticateToken, validate(mes
 
 app.post('/api/chat/messages', authenticateToken, validate(messageSchema), async (req: any, res: Response) => {
   try {
-    const { conversationId, content, otherUserId, imageUrl, productId } = req.body;
+    const { conversationId, content, imageUrl, productId } = req.body;
     if (!content && !imageUrl) return res.status(400).json({ error: 'content or imageUrl required' });
+    if (imageUrl && !isOwnUploadUrl(imageUrl)) return res.status(400).json({ error: 'Invalid imageUrl' });
     const participant = await prisma.conversationParticipant.findFirst({
       where: { conversationId, userId: req.user.userId }
     });
@@ -3115,15 +3344,15 @@ app.post('/api/chat/messages', authenticateToken, validate(messageSchema), async
       if (transporter && otherUser?.email && otherUser.emailNotifications && otherUser.emailChat) {
         try {
           const emailContent = `
-            <p class="greeting">Nuevo mensaje de ${message.sender.name} 💬</p>
-            <p class="message">"${message.content}"</p>
+            <p class="greeting">Nuevo mensaje de ${escapeHtml(message.sender.name)} 💬</p>
+            <p class="message">"${escapeHtml(message.content.slice(0, 300))}"</p>
             <div style="text-align: center;">
               <a href="${getEmailFriendlyUrl('/social?tab=chat')}" class="button">Ver Conversación</a>
             </div>
           `;
           await sendMailWithRetry({
             to: otherUser.email,
-            subject: `💬 Nuevo mensaje de ${message.sender.name} - Estilo Vivo`,
+            subject: `💬 Nuevo mensaje de ${String(message.sender.name).replace(/[\r\n]/g, ' ')} - Estilo Vivo`,
             html: getEmailTemplate(emailContent, 'Nuevo Mensaje')
           });
         } catch (mailErr) {
@@ -3179,16 +3408,25 @@ if (!existsSync(STORIES_DIR)) {
 const storyStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, STORIES_DIR),
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'story-' + uniqueSuffix + path.extname(file.originalname));
+    cb(null, `story-${Date.now()}-${crypto.randomBytes(8).toString('hex')}${MIME_EXT[file.mimetype] || '.bin'}`);
   },
 });
 const storyUpload = multer({ storage: storyStorage, limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: imageFileFilter });
 
 app.get('/api/stories', optionalAuth, async (req: any, res: Response) => {
   try {
+    const viewerId: string | undefined = req.user?.userId;
+    const followingIds = viewerId
+      ? (await prisma.follow.findMany({ where: { followerId: viewerId }, select: { followingId: true } })).map(f => f.followingId)
+      : [];
     const stories = await prisma.story.findMany({
-      where: { expiresAt: { gt: new Date() } },
+      where: {
+        expiresAt: { gt: new Date() },
+        OR: [
+          { user: { isProfilePublic: true } },
+          ...(viewerId ? [{ userId: viewerId }, { userId: { in: followingIds } }] : []),
+        ],
+      },
       include: { user: { select: { id: true, name: true, avatar: true } } },
       orderBy: { createdAt: 'desc' },
     });
@@ -3205,10 +3443,25 @@ app.post('/api/stories', authenticateToken, storyUpload.single('image'), async (
     const file = req.file;
     let imageUrl: string | null = null;
 
+    if (type !== 'image' && type !== 'text') {
+      safeUnlink(file?.path);
+      return res.status(400).json({ error: 'Tipo de historia inválido' });
+    }
+    const cleanText = typeof text === 'string' ? text.trim().slice(0, 500) : '';
+
     if (type === 'image' && file) {
-      imageUrl = `/api/uploads/stories/${file.filename}`;
-    } else if (type === 'image' && req.body.imageUrl) {
+      const storedName = await reencodeSingleImage(file, STORIES_DIR);
+      if (!storedName) return res.status(400).json({ error: 'No se pudo procesar la imagen' });
+      imageUrl = `/api/uploads/stories/${storedName}`;
+    } else if (type === 'image' && isOwnUploadUrl(req.body.imageUrl)) {
       imageUrl = req.body.imageUrl;
+    } else if (type === 'image') {
+      return res.status(400).json({ error: 'Falta la imagen de la historia' });
+    } else if (!cleanText) {
+      safeUnlink(file?.path);
+      return res.status(400).json({ error: 'La historia no puede estar vacía' });
+    } else {
+      safeUnlink(file?.path);
     }
 
     const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24);
@@ -3217,7 +3470,7 @@ app.post('/api/stories', authenticateToken, storyUpload.single('image'), async (
       data: {
         userId: req.user.userId,
         type,
-        text: text || null,
+        text: cleanText || null,
         imageUrl,
         expiresAt,
       },
@@ -3225,6 +3478,7 @@ app.post('/api/stories', authenticateToken, storyUpload.single('image'), async (
     });
 
     res.status(201).json(story);
+    awardXp(prisma, req.user.userId, XP_VALUES.publishStory).catch(() => {});
   } catch (error) {
     logger.error('Error creating story', { error });
     res.status(500).json({ error: 'Error creating story' });
@@ -3233,9 +3487,14 @@ app.post('/api/stories', authenticateToken, storyUpload.single('image'), async (
 
 app.post('/api/stories/:id/view', authenticateToken, async (req: any, res: Response) => {
   try {
+    const existingStory = await prisma.story.findUnique({ where: { id: req.params.id }, select: { userId: true } });
+    if (!existingStory) return res.status(404).json({ error: 'Historia no encontrada' });
+    // Las visitas propias no cuentan
+    if (existingStory.userId === req.user.userId) return res.json({ success: true });
     const story = await prisma.story.update({
       where: { id: req.params.id },
       data: { views: { increment: 1 } },
+      select: { id: true, views: true },
     });
     res.json(story);
   } catch (error) {
@@ -3247,7 +3506,7 @@ app.post('/api/stories/:id/view', authenticateToken, async (req: any, res: Respo
 app.post('/api/stories/:id/reaction', authenticateToken, async (req: any, res: Response) => {
   try {
     const { emoji } = req.body;
-    if (!emoji) return res.status(400).json({ error: 'Emoji requerido' });
+    if (typeof emoji !== 'string' || !emoji.trim() || [...emoji].length > 4) return res.status(400).json({ error: 'Emoji requerido' });
 
     const story = await prisma.story.findUnique({
       where: { id: req.params.id },
@@ -3320,11 +3579,12 @@ app.post('/api/stories/:id/reaction', authenticateToken, async (req: any, res: R
     }
 
     awardXp(prisma, req.user.userId, XP_VALUES.storyReaction).catch((e) => { logger.error('Error awarding XP for story reaction', { e }); });
+    // (el XP por reacción es de 1 punto; el rate limit general evita abusos)
 
     res.status(201).json({ message, conversationId: conversation.id });
   } catch (error: any) {
     logger.error('Error reacting to story', { error: error?.message || error, stack: error?.stack });
-    res.status(500).json({ error: 'Error al reaccionar a la historia', detail: error?.message || '' });
+    res.status(500).json({ error: 'Error al reaccionar a la historia' });
   }
 });
 
@@ -3335,6 +3595,9 @@ app.delete('/api/stories/:id', authenticateToken, async (req: any, res: Response
     if (!story) return res.status(404).json({ error: 'Historia no encontrada' });
     if (story.userId !== req.user.userId) return res.status(403).json({ error: 'No autorizado' });
     await prisma.story.delete({ where: { id } });
+    if (story.imageUrl?.startsWith('/api/uploads/stories/')) {
+      safeUnlink(path.join(STORIES_DIR, path.basename(story.imageUrl)));
+    }
     res.json({ success: true });
   } catch (error) {
     logger.error('Error deleting story', { error });

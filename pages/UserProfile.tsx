@@ -53,18 +53,25 @@ export default function UserProfile({ userId, onBack, onNavigate, onStartChat }:
 
   const handleFollow = async () => {
     try {
+      const wasFollowing = following;
       const res = await api.toggleFollow(userId);
       if (res.requesting) {
         // Private profile — request sent
         setPendingRequest(true);
       } else {
-        setFollowing(res.following);
+        const nowFollowing = !!res.following;
+        setFollowing(nowFollowing);
         setPendingRequest(false);
-        setProfile(prev => prev ? {
-          ...prev,
-          followersCount: res.following ? prev.followersCount + 1 : prev.followersCount - 1,
-          isFollowing: res.following,
-        } : prev);
+        // Sólo cambia el contador si realmente cambió el seguimiento (cancelar una solicitud no lo altera)
+        if (wasFollowing !== nowFollowing) {
+          setProfile(prev => prev ? {
+            ...prev,
+            followersCount: Math.max(0, prev.followersCount + (nowFollowing ? 1 : -1)),
+            isFollowing: nowFollowing,
+          } : prev);
+        }
+        // Al dejar de seguir un perfil privado su contenido deja de ser visible
+        if (wasFollowing && !nowFollowing && profile && !profile.isProfilePublic) loadProfile();
       }
     } catch (e) {
       console.error('Error following:', e);

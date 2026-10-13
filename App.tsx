@@ -190,12 +190,34 @@ const AppContent: React.FC = () => {
     }
   }, [user]);
 
+  // Enlaces de email con sesión ya iniciada: verificar el correo en segundo plano
+  useEffect(() => {
+    if (!user) return;
+    const params = new URLSearchParams(window.location.search);
+    const verifyToken = params.get('verifyToken') || (params.get('type') === 'verify' ? params.get('token') : null);
+    if (!verifyToken) return;
+    api.verifyEmail(verifyToken)
+      .then(() => notify('✓ Tu correo ha sido verificado', 'success'))
+      .catch((err: any) => notify(err?.message || 'No se pudo verificar el correo', 'error'))
+      .finally(() => window.history.replaceState({}, '', '/'));
+  }, [user, notify]);
+
+  const isPasswordResetLink = (() => {
+    const params = new URLSearchParams(window.location.search);
+    return !!params.get('token') && params.get('type') === 'reset';
+  })();
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[var(--bg-base)] flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
       </div>
     );
+  }
+
+  // El enlace de "restablecer contraseña" debe funcionar aunque haya una sesión abierta
+  if (user && isPasswordResetLink) {
+    return <AuthPage onAuthSuccess={handleAuthSuccess} />;
   }
 
   if (!user) {
@@ -356,13 +378,32 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   useEffect(() => {
     const handler = CapApp.addListener('backButton', ({ canGoBack }) => {
-      if (canGoBack) {
+      // Primero se cierra cualquier modal abierto (los modales escuchan este evento)
+      const evt = new CustomEvent('ev:back', { cancelable: true });
+      window.dispatchEvent(evt);
+      if (evt.defaultPrevented) return;
+      if (canGoBack && window.location.pathname !== '/') {
         window.history.back();
       } else {
         CapApp.exitApp();
       }
     });
-    return () => { handler.then(h => h.remove()); };
+    // Deep links (https://estilovivo.xyoncloud.win/... o estilovivo://...) abiertos con la app
+    const urlHandler = CapApp.addListener('appUrlOpen', ({ url }) => {
+      try {
+        const parsed = new URL(url);
+        const target = parsed.protocol === 'estilovivo:'
+          ? `/${parsed.host}${parsed.pathname}${parsed.search}`.replace(/\/+/g, '/')
+          : `${parsed.pathname}${parsed.search}`;
+        if (parsed.protocol === 'estilovivo:' || parsed.host === window.location.host) {
+          if (`${window.location.pathname}${window.location.search}` !== target) window.location.assign(target);
+        }
+      } catch { /* URL inválida */ }
+    });
+    return () => {
+      handler.then(h => h.remove());
+      urlHandler.then(h => h.remove());
+    };
   }, []);
 
   useEffect(() => {

@@ -1,3 +1,5 @@
+import { toLocalDateStr } from './date';
+
 export interface CyclePeriod {
   startDate: string; // YYYY-MM-DD
   endDate: string;
@@ -51,7 +53,7 @@ export function isDateInCycle(dateStr: string, period: CyclePeriod): boolean {
 export function isTodayInCycle(userId?: string, period?: CyclePeriod | null): boolean {
   const p = period ?? getCyclePeriod(userId);
   if (!p) return false;
-  const today = new Date().toISOString().split('T')[0];
+  const today = toLocalDateStr();
   return isDateInCycle(today, p);
 }
 
@@ -65,6 +67,6 @@ export function getMotivationalMessageForDate(dateStr: string, userId?: string):
 }
 
 export function getMotivationalMessageForToday(userId?: string): string | null {
-  const today = new Date().toISOString().split('T')[0];
+  const today = toLocalDateStr();
   return getMotivationalMessageForDate(today, userId);
 }

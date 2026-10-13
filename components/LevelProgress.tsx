@@ -1,11 +1,10 @@
 import React from 'react';
 import { UserState } from '../types';
+import { xpProgress } from '../src/utils/xp';
 
 interface LevelProgressProps {
     user: UserState;
 }
-
-const XP_PER_LEVEL = 100;
 
 // Returns a label for the level tier
 function getLevelTitle(level: number): string {
@@ -19,9 +18,7 @@ function getLevelTitle(level: number): string {
 const LevelProgress: React.FC<LevelProgressProps> = ({ user }) => {
     const xp = user.experiencePoints ?? 0;
     const level = user.level ?? 1;
-    const xpInCurrentLevel = xp % XP_PER_LEVEL;
-    const progressPct = (xpInCurrentLevel / XP_PER_LEVEL) * 100;
-    const xpToNext = XP_PER_LEVEL - xpInCurrentLevel;
+    const { current: xpInCurrentLevel, needed: xpNeeded, percentage: progressPct, toNext: xpToNext } = xpProgress(xp, level);
 
     return (
         <div className="bg-[var(--bg-card)] border border-[var(--border-light)] rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3">
@@ -35,7 +32,7 @@ const LevelProgress: React.FC<LevelProgressProps> = ({ user }) => {
             <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-semibold text-[var(--text-primary)]">{getLevelTitle(level)}</span>
-                    <span className="text-[10px] text-[var(--text-muted)]">{xpInCurrentLevel} / {XP_PER_LEVEL} XP</span>
+                    <span className="text-[10px] text-[var(--text-muted)]">{xpInCurrentLevel} / {xpNeeded} XP</span>
                 </div>
 
                 {/* Bar */}

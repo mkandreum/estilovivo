@@ -19,12 +19,13 @@ import { useLanguage } from '../src/context/LanguageContext';
 import { languages, dialects } from '../src/utils/translations';
 import Logo from '../components/Logo';
 import DonutChart from '../components/DonutChart';
+import { useGlobalState } from '../src/context/GlobalStateContext';
 
 interface ProfileProps {
   user: UserState;
   plannerEntries: PlannerEntry[];
   looks: Look[];
-  onUpdateUser: (user: UserState) => void;
+  onUpdateUser: (user: UserState, options?: { persist?: boolean }) => void;
   garments: Garment[];
   onNavigate: (tab: string) => void;
 }
@@ -72,6 +73,7 @@ const FollowRequestsSection: React.FC = () => {
 };
 
 const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdateUser, garments, onNavigate }) => {
+  const { copyProductToWardrobe } = useGlobalState();
   const [activeSection, setActiveSection] = useState<'stats' | 'favorites' | 'settings' | 'progress'>('stats');
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(user.name);
@@ -319,7 +321,7 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
       const formData = new FormData();
       formData.append('fullBodyAvatar', file);
       const updatedUser = await api.updateProfileWithAvatar(formData);
-      onUpdateUser(updatedUser);
+      onUpdateUser(updatedUser, { persist: false });
     } catch (e) {
       console.warn('Error uploading full body avatar directly', e);
     }
@@ -341,7 +343,7 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
       } else {
         updatedUser = await api.updateProfile({ name: editName, bio: editBio });
       }
-      onUpdateUser(updatedUser);
+      onUpdateUser(updatedUser, { persist: false });
       setEditing(false);
       setAvatarFile(null);
       setAvatarPreview(null);
@@ -385,7 +387,7 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
         data.emailChat = value; data.emailFollows = value; data.emailWashing = value; data.emailChallenges = value;
       }
       await api.updateUserPreferences(data);
-      onUpdateUser({ ...user, ...data });
+      onUpdateUser({ ...user, ...data }, { persist: false });
     } catch (e: any) {
       const prevVal = prev[setting];
       if (setting === 'cycleTracking') setCycleTracking(prevVal);
@@ -592,7 +594,12 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
       setConfirmPassword('');
       setTimeout(() => setPasswordSuccess(false), 3000);
     } catch (e: any) {
-      setPasswordError(e.message === 'invalidCurrentPassword' ? t('invalidCurrentPassword') : 'Error al cambiar la contraseña');
+      const msg = e?.message;
+      setPasswordError(
+        msg === 'invalidCurrentPassword' ? t('invalidCurrentPassword')
+          : msg === 'samePassword' ? 'La nueva contraseña debe ser distinta de la actual'
+          : (msg && msg.length < 120 ? msg : 'Error al cambiar la contraseña')
+      );
     } finally {
       setPasswordLoading(false);
     }
@@ -603,14 +610,7 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
 
     setActionLoadingId(fav.id);
     try {
-      // Create a new garment from the product
-      const garmentData = {
-        name: fav.product.name,
-        category: fav.product.category || 'otro',
-        color: fav.product.color || 'neutral',
-      };
-
-      await api.addGarment(garmentData);
+      if (!(await copyProductToWardrobe(fav.product))) return;
 
       // Toggle favorite to remove it
       await api.toggleFavorite(undefined, fav.product.id);
@@ -1336,10 +1336,10 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
                               if (user.id) saveCyclePeriod(user.id, null);
                             }
                             const updated = await api.updateProfile(payload as any);
-                            onUpdateUser(updated);
-                          } catch (e) {
+                            onUpdateUser(updated, { persist: false });
+                          } catch (e: any) {
                             console.warn('Error saving gender:', e);
-                            onUpdateUser({ ...user, gender: option.id as any });
+                            setSettingsError(e?.message || 'No se pudo guardar el género');
                           }
                         }}
                         className={`py-2.5 px-3 rounded-lg text-xs font-bold transition transform hover:scale-105 ${user.gender === option.id
@@ -1857,7 +1857,7 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
                     onClick={async () => {
                       try {
                         await api.updateUserPreferences({ locationName });
-                        onUpdateUser({ ...user, locationName });
+                        onUpdateUser({ ...user, locationName }, { persist: false });
                       } catch (e) {
                         console.warn('Error saving location:', e);
                       }
@@ -1873,7 +1873,7 @@ const Profile: React.FC<ProfileProps> = ({ user, plannerEntries, looks, onUpdate
                       setLocationName('');
                       try {
                         await api.updateUserPreferences({ locationName: '' });
-                        onUpdateUser({ ...user, locationName: '' });
+                        onUpdateUser({ ...user, locationName: '' }, { persist: false });
                       } catch (e) {
                         console.warn('Error clearing location:', e);
                       }

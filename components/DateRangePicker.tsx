@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, CalendarDays, CalendarRange, CalendarClock } from 'lucide-react';
+import { toLocalDateStr } from '../src/utils/date';
 
 interface DateRangePickerProps {
   startDate: string;
@@ -51,11 +52,11 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
 
   const formatDate = (year: number, month: number, day: number) => {
     const date = new Date(year, month, day);
-    return date.toISOString().split('T')[0];
+    return toLocalDateStr(date);
   };
 
   const formatDateFromDate = (d: Date) => {
-    return d.toISOString().split('T')[0];
+    return toLocalDateStr(d);
   };
 
   const isInRange = (dateStr: string): boolean => {

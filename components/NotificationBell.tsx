@@ -53,7 +53,8 @@ const NotificationBell: React.FC = () => {
         const newSocket = io(getSocketOrigin(), {
             withCredentials: true,
             autoConnect: true,
-            auth: { token: localStorage.getItem('beyour_token') || '' },
+            // Función: en cada reconexión se envía el token vigente (tras un refresh)
+            auth: (cb) => cb({ token: localStorage.getItem('beyour_token') || '' }),
             transports: ['websocket', 'polling'],
             reconnectionAttempts: 10,
             reconnectionDelay: 1000,
@@ -103,7 +104,7 @@ const NotificationBell: React.FC = () => {
         }
         
         // Navigate based on notification type
-        if (notif.type === 'CHAT') {
+        if (notif.type === 'CHAT' || notif.type === 'STORY_REACTION') {
             const conversationId = notif.relatedId || notif.data?.conversationId;
             if (conversationId) {
                 localStorage.setItem('ev_chat_open', conversationId);
@@ -113,9 +114,15 @@ const NotificationBell: React.FC = () => {
         } else if (notif.type === 'LIKE' || notif.type === 'COMMENT') {
             setIsOpen(false);
             window.dispatchEvent(new CustomEvent('navigateTo', { detail: { tab: 'social', subTab: 'feed' } }));
+        } else if (notif.type === 'WASHING') {
+            setIsOpen(false);
+            window.dispatchEvent(new CustomEvent('navigateTo', { detail: { tab: 'wardrobe' } }));
         } else if (notif.type === 'FOLLOW') {
             setIsOpen(false);
-            if (notif.relatedId) {
+            // Solicitud de seguimiento: se gestiona desde el perfil propio
+            if (notif.content?.includes('quiere seguirte')) {
+                window.dispatchEvent(new CustomEvent('navigateTo', { detail: { tab: 'profile' } }));
+            } else if (notif.relatedId) {
                 window.dispatchEvent(new CustomEvent('navigateTo', { detail: { tab: 'userProfile', extra: notif.relatedId } }));
             } else {
                 window.dispatchEvent(new CustomEvent('navigateTo', { detail: { tab: 'profile' } }));
@@ -146,6 +153,8 @@ const NotificationBell: React.FC = () => {
             case 'LIKE': return '\u2764\uFE0F';
             case 'COMMENT': return '\uD83D\uDCAD';
             case 'FOLLOW': return '\uD83D\uDC64';
+            case 'STORY_REACTION': return '\u2728';
+            case 'WASHING': return '\uD83E\uDDFA';
             default: return '\uD83D\uDD14';
         }
     };

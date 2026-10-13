@@ -54,7 +54,7 @@ export default function Premium({ onBack }: Props) {
             style={{ backgroundColor: 'var(--color-primary)' }}
           >
             <Mail size={16} />
-            appetilovivo@gmail.com
+            appestilovivo@gmail.com
           </a>
         </div>
       </div>

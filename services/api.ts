@@ -182,7 +182,7 @@ export const refreshAccessToken = async (): Promise<string | null> => {
     isRefreshing = true;
 
     try {
-        const res = await fetchWithTimeout(`${API_BASE}/auth/refresh`, {
+        const res = await rawFetchWithTimeout(`${API_BASE}/auth/refresh`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refreshToken }),
@@ -192,6 +192,7 @@ export const refreshAccessToken = async (): Promise<string | null> => {
             await clearAuthToken();
             await clearRefreshToken();
             clearPersistedSession();
+            onRefreshFailed(new Error('Session expired'));
             if (typeof window !== 'undefined') {
                 window.dispatchEvent(new CustomEvent('auth:expired'));
             }
@@ -294,6 +295,8 @@ export const parseApiErrorMessage = async (res: Response): Promise<string> => {
     const contentType = res.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
         const body = await res.json().catch(() => ({}));
+        // Errores de validación de zod: se muestra el primer motivo concreto
+        if (Array.isArray(body?.details) && typeof body.details[0]?.message === 'string') return body.details[0].message;
         if (typeof body?.error === 'string') return body.error;
         if (typeof body?.message === 'string') return body.message;
         if (typeof body?.detail === 'string') return body.detail;
@@ -323,17 +326,9 @@ const handleResponse = async (res: Response, _isRetry = false) => {
         const message = await parseApiErrorMessage(res);
         const error = { error: message };
 
-        // Auto-refresh on token expiry (401 or 403 by token)
-        if (
-            !_isRetry &&
-            (res.status === 401 || (res.status === 403 && error.error === 'Invalid or expired token')) &&
-            getRefreshToken()
-        ) {
-            const newToken = await refreshAccessToken();
-            if (newToken) throw { __tokenRefreshed: true, newToken } as any;
-        }
-
-        if (res.status === 401 || (res.status === 403 && error.error === 'Invalid or expired token')) {
+        // El refresco ya se intentó en fetchWithTimeout; si seguimos con 401 la sesión no es recuperable
+        const isAuthEndpoint = NO_REFRESH_PATHS.some(p => res.url.includes(p));
+        if (!isAuthEndpoint && (res.status === 401 || (res.status === 403 && error.error === 'Invalid or expired token'))) {
             await clearAuthToken();
             await clearRefreshToken();
             clearPersistedSession();
@@ -352,7 +347,7 @@ const handleResponse = async (res: Response, _isRetry = false) => {
 
 const DEFAULT_TIMEOUT_MS = 15000;
 
-const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Response> => {
+const rawFetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Response> => {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -361,6 +356,43 @@ const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutM
     } finally {
         clearTimeout(id);
     }
+};
+
+// Endpoints que nunca deben disparar un refresh (evita bucles y falsos "sesión caducada")
+const NO_REFRESH_PATHS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/forgot-password', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/auth/change-password'];
+
+const isTokenErrorResponse = async (res: Response): Promise<boolean> => {
+    if (res.status === 401) return true;
+    if (res.status !== 403) return false;
+    try {
+        const body = await res.clone().json();
+        return body?.error === 'Invalid or expired token' || body?.error === 'Token required';
+    } catch {
+        return false;
+    }
+};
+
+const withFreshAuthHeader = (options: RequestInit): RequestInit => {
+    const token = getAuthTokenSync();
+    if (!token) return options;
+    const headers = new Headers(options.headers || {});
+    headers.set('Authorization', `Bearer ${token}`);
+    return { ...options, headers };
+};
+
+/**
+ * fetch con timeout y refresco transparente del access token:
+ * si el servidor responde 401/403 por token caducado y hay refresh token,
+ * se renueva la sesión y se repite la petición una sola vez.
+ * Los cuerpos FormData/string son reutilizables, así que el reintento es seguro.
+ */
+const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Response> => {
+    const res = await rawFetchWithTimeout(url, withFreshAuthHeader(options), timeoutMs);
+    if (NO_REFRESH_PATHS.some(p => url.includes(p)) || !getRefreshToken()) return res;
+    if (!(await isTokenErrorResponse(res))) return res;
+    const newToken = await refreshAccessToken().catch(() => null);
+    if (!newToken) return res;
+    return rawFetchWithTimeout(url, withFreshAuthHeader(options), timeoutMs);
 };
 
 const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<any> => {
@@ -374,6 +406,23 @@ const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<an
         }
         throw err;
     }
+};
+
+// Recorre todas las páginas de un endpoint paginado por cursor ({ items, nextCursor, hasMore })
+const fetchAllPages = async (baseUrl: string, maxPages = 50): Promise<any[]> => {
+    const all: any[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < maxPages; page++) {
+        const sep = baseUrl.includes('?') ? '&' : '?';
+        const url = `${baseUrl}${sep}limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+        const res = await fetchWithTimeout(url, { headers: getHeaders(), credentials: 'include' });
+        const data = await handleResponse(res);
+        if (Array.isArray(data)) return data; // respuesta antigua sin paginar
+        all.push(...(data?.items || []));
+        if (!data?.hasMore || !data?.nextCursor) break;
+        cursor = data.nextCursor;
+    }
+    return all;
 };
 
 // Helper: map backend product to frontend Garment
@@ -400,6 +449,16 @@ const mapProductToGarment = (p: any): Garment | undefined => {
         userAvatar: resolveAssetUrl(p.user?.avatar),
     };
 };
+
+// Helper: map backend trip to frontend Trip (las prendas llegan como productos crudos)
+const mapTrip = (t: any): Trip => ({
+    id: t.id,
+    destination: t.destination,
+    dateStart: t.dateStart,
+    dateEnd: t.dateEnd,
+    items: Array.isArray(t.items) ? t.items.map((i: any) => ({ id: i.id, label: i.label, checked: !!i.checked, isEssential: !!i.isEssential })) : [],
+    garments: Array.isArray(t.garments) ? t.garments.map(mapProductToGarment).filter((g: any) => !!g) : [],
+});
 
 // Helper: map backend look to frontend Look
 const mapLook = (l: any): Look | undefined => {
@@ -498,7 +557,11 @@ export const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(passwords)
         });
-        return handleResponse(res);
+        const data = await handleResponse(res);
+        // El servidor cierra el resto de sesiones y devuelve un par nuevo para ésta
+        if (data?.token) await cacheAuthToken(data.token, getRememberMe());
+        if (data?.refreshToken) await saveRefreshToken(data.refreshToken);
+        return data;
     },
 
     forgotPassword: async (email: string) => {
@@ -579,10 +642,7 @@ export const api = {
 
     // ============= GARMENTS / PRODUCTS =============
     getGarments: async (): Promise<Garment[]> => {
-        const res = await fetchWithTimeout(`${API_BASE}/products`, { headers: getHeaders(), credentials: 'include' });
-        const data = await handleResponse(res);
-        // Backend now returns { items, nextCursor, hasMore } for pagination
-        const items = data.items || data; // Fallback for backwards compatibility
+        const items = await fetchAllPages(`${API_BASE}/products`);
         return items.map(mapProductToGarment).filter((g: any) => !!g);
     },
 
@@ -621,14 +681,14 @@ export const api = {
             if (metadata.size) formData.append('size', metadata.size || '');
             if (metadata.condition) formData.append('condition', metadata.condition || '');
             if (metadata.description) formData.append('description', metadata.description || '');
-            if (metadata.price !== undefined) formData.append('price', String(metadata.price));
+            if (metadata.price !== undefined && metadata.price !== null) formData.append('price', String(metadata.price));
             if (metadata.forSale !== undefined) formData.append('forSale', String(metadata.forSale));
             if (metadata.isWashing !== undefined) formData.append('isWashing', String(metadata.isWashing));
-            if (metadata.usageCount !== undefined) formData.append('usageCount', String(metadata.usageCount));
+            if (metadata.price === null) formData.append('price', '');
             formData.append('images', imageFile);
             const res = await fetchWithTimeout(`${API_BASE}/products/${id}`, {
                 credentials: 'include', method: 'PUT',
-                headers: { Authorization: `Bearer ${localStorage.getItem('beyour_token') || ''}` },
+                headers: getAuthHeader() as any,
                 body: formData,
             });
             const p = await handleResponse(res);
@@ -644,7 +704,6 @@ export const api = {
                 season: metadata.season,
                 price: metadata.price === null ? null : metadata.price,
                 forSale: metadata.forSale,
-                usageCount: metadata.usageCount,
                 isWashing: metadata.isWashing,
                 brand: metadata.brand,
                 size: metadata.size,
@@ -696,10 +755,7 @@ export const api = {
 
     // ============= LOOKS =============
     getLooks: async (): Promise<Look[]> => {
-        const res = await fetchWithTimeout(`${API_BASE}/looks`, { headers: getHeaders(), credentials: 'include' });
-        const data = await handleResponse(res);
-        // Backend now returns { items, nextCursor, hasMore } for pagination
-        const items = data.items || data; // Fallback for backwards compatibility
+        const items = await fetchAllPages(`${API_BASE}/looks`);
         return items.map(mapLook).filter((l: any) => !!l);
     },
 
@@ -727,10 +783,11 @@ export const api = {
         return mapLook(l)!;
     },
 
-    saveLookWithImage: async (name: string, productIds: string[], imageBlob: Blob): Promise<Look> => {
+    saveLookWithImage: async (name: string, productIds: string[], imageBlob: Blob, isPublic: boolean = false): Promise<Look> => {
         const formData = new FormData();
         formData.append('title', name);
         formData.append('productIds', JSON.stringify(productIds));
+        formData.append('isPublic', String(isPublic));
         formData.append('images', imageBlob, 'look.png');
         
         const res = await fetchWithTimeout(`${API_BASE}/looks`, {
@@ -816,7 +873,7 @@ export const api = {
         const res = await fetchWithTimeout(`${API_BASE}/planner`, {
             credentials: 'include', method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({ ...entry, userId: 'me' })
+            body: JSON.stringify({ date: entry.date, lookId: entry.lookId || null, eventNote: entry.eventNote || '' })
         });
         const e = await handleResponse(res);
         return {
@@ -838,35 +895,40 @@ export const api = {
     // ============= TRIPS =============
     getTrips: async (): Promise<Trip[]> => {
         const res = await fetchWithTimeout(`${API_BASE}/trips/me`, { headers: getHeaders(), credentials: 'include' });
-        return handleResponse(res);
+        const data = await handleResponse(res);
+        return (Array.isArray(data) ? data : []).map(mapTrip);
     },
 
     saveTrip: async (trip: Trip): Promise<Trip> => {
-        const { garments, ...rest } = trip;
         const payload = {
-            ...rest,
-            garmentIds: garments ? garments.map(g => g.id) : []
+            destination: trip.destination,
+            dateStart: trip.dateStart,
+            dateEnd: trip.dateEnd,
+            items: (trip.items || []).map(i => ({ label: i.label, checked: !!i.checked, isEssential: !!i.isEssential })),
+            garmentIds: trip.garments ? trip.garments.map(g => g.id) : []
         };
         const res = await fetchWithTimeout(`${API_BASE}/trips`, {
             credentials: 'include', method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify(payload)
         });
-        return handleResponse(res);
+        return mapTrip(await handleResponse(res));
     },
 
+    // Sólo datos del viaje (destino, fechas, prendas). Los items se guardan con add/update/deleteTripItem.
     updateTrip: async (trip: Trip): Promise<Trip> => {
-        const { garments, ...rest } = trip;
         const payload = {
-            ...rest,
-            garmentIds: garments ? garments.map(g => g.id) : []
+            destination: trip.destination,
+            dateStart: trip.dateStart,
+            dateEnd: trip.dateEnd,
+            garmentIds: trip.garments ? trip.garments.map(g => g.id) : []
         };
         const res = await fetchWithTimeout(`${API_BASE}/trips/${trip.id}`, {
             credentials: 'include', method: 'PUT',
             headers: getHeaders(),
             body: JSON.stringify(payload)
         });
-        return handleResponse(res);
+        return mapTrip(await handleResponse(res));
     },
 
     deleteTrip: async (id: string): Promise<void> => {
@@ -1071,8 +1133,14 @@ export const api = {
         if (data.text) formData.append('text', data.text);
         if (data.imageFile) {
             formData.append('image', data.imageFile);
+        } else if (data.imageUrl?.startsWith('data:') || data.imageUrl?.startsWith('blob:')) {
+            // Imagen local sin File: se sube como fichero (el servidor no acepta data: URLs)
+            const blob = await fetch(data.imageUrl).then(r => r.blob());
+            formData.append('image', new File([blob], `story-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' }));
         } else if (data.imageUrl) {
-            formData.append('imageUrl', data.imageUrl);
+            // Imagen ya alojada en el servidor (p. ej. una prenda): se envía la ruta relativa
+            const relative = data.imageUrl.startsWith(API_ORIGIN) ? data.imageUrl.slice(API_ORIGIN.length) : data.imageUrl;
+            formData.append('imageUrl', relative);
         }
         const res = await fetchWithTimeout(`${API_BASE}/stories`, {
             credentials: 'include', method: 'POST',

@@ -17,6 +17,7 @@ import {
 } from '../src/utils/cycleTracking';
 import { useNotification } from '../src/context/NotificationContext';
 import CycleDayMarker from '../src/components/CycleDayMarker';
+import { toLocalDateStr } from '../src/utils/date';
 
 interface HomeProps {
   user: UserState;
@@ -84,7 +85,7 @@ const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate, plannerEntr
     return Array.from({ length: 7 }).map((_, i) => {
       const d = new Date();
       d.setDate(today.getDate() - today.getDay() + i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = toLocalDateStr(d);
       const entry = plannerEntries.find(e => e.date === dateStr);
       const look = entry ? looks.find(l => l.id === entry.lookId) : null;
 
@@ -120,7 +121,7 @@ const Home: React.FC<HomeProps> = ({ user, onMoodChange, onNavigate, plannerEntr
   };
 
   // Today's plan
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStr = toLocalDateStr(today);
   const todayEntry = plannerEntries.find(e => e.date === todayStr);
   const todayLook = todayEntry ? looks.find(l => l.id === todayEntry.lookId) : null;
 

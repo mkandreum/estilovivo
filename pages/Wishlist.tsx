@@ -3,6 +3,7 @@ import { Heart, Tag, Sparkles, ShoppingBag, MessageCircle, CheckCircle2 } from '
 import { api } from '../services/api';
 import { Garment } from '../types';
 import { useLanguage } from '../src/context/LanguageContext';
+import { useGlobalState } from '../src/context/GlobalStateContext';
 
 interface WishlistProps {
   garments: Garment[];
@@ -11,6 +12,7 @@ interface WishlistProps {
 
 const Wishlist: React.FC<WishlistProps> = ({ garments, onNavigate }) => {
   const { t } = useLanguage();
+  const { copyProductToWardrobe } = useGlobalState();
   const [favorites, setFavorites] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -67,14 +69,7 @@ const Wishlist: React.FC<WishlistProps> = ({ garments, onNavigate }) => {
     if (!product) return;
     setActionLoadingId(fav.id);
     try {
-      await api.addGarment({
-        name: product.name,
-        category: product.category || 'top',
-        color: product.color || 'varios',
-        season: product.season || 'all',
-        brand: product.brand || undefined,
-        size: product.size || undefined,
-      });
+      if (!(await copyProductToWardrobe(product))) return;
       await api.toggleFavorite(undefined, product.id);
       setFavorites(prev => prev.filter(f => f.id !== fav.id));
       onNavigate('wardrobe');

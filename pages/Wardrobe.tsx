@@ -409,7 +409,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
       size: editSize || undefined,
       condition: editCondition || undefined,
       description: editDescription || undefined,
-      price: editPrice ? parseFloat(editPrice) : undefined,
+      price: editPrice ? (parseFloat(editPrice.replace(',', '.')) || null) : (editForSale ? undefined : null) as any,
       forSale: editForSale,
       imageFile: editFile || undefined,
     } as any);
@@ -422,7 +422,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
     setSelectedForSale(null);
     setSalePrice('');
     setSaleDescription('');
-    setSaleCondition('bueno');
+    setSaleCondition('good');
     setSaleSize('');
     setSaleImage(null);
     setSaleFile(null);
@@ -431,8 +431,19 @@ const Wardrobe: React.FC<WardrobeProps> = ({
     setSaleUploadError(null);
   };
 
+  const parseSalePrice = (): number | null => {
+    const value = parseFloat(String(salePrice).replace(',', '.'));
+    if (isNaN(value) || value <= 0 || value > 100000) {
+      setSaleUploadError('Introduce un precio válido mayor que 0 €.');
+      return null;
+    }
+    return Math.round(value * 100) / 100;
+  };
+
   const confirmNewSale = () => {
     if (!saleImage || !saleName.trim() || !salePrice) return;
+    const priceValue = parseSalePrice();
+    if (priceValue === null) return;
     let fileToUpload = saleFile;
     if (!fileToUpload && saleImage.startsWith('data:')) {
       fileToUpload = dataUrlToFile(saleImage, `garment-sale-${Date.now()}.jpg`);
@@ -446,7 +457,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
       season: 'all',
       usageCount: 0,
       forSale: true,
-      price: parseFloat(salePrice),
+      price: priceValue,
       description: saleDescription || undefined,
       condition: saleCondition,
       size: saleSize || undefined,
@@ -459,10 +470,12 @@ const Wardrobe: React.FC<WardrobeProps> = ({
   const confirmSale = () => {
     if (!salePrice) return;
     if (selectedForSale) {
+      const priceValue = parseSalePrice();
+      if (priceValue === null) return;
       onUpdateGarment({
         ...selectedForSale,
         forSale: true,
-        price: parseFloat(salePrice),
+        price: priceValue,
         description: saleDescription || undefined,
         condition: saleCondition,
         size: saleSize || undefined,
@@ -478,7 +491,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
     onUpdateGarment({
       ...item,
       forSale: false,
-      price: undefined,
+      price: null as any, // null borra el precio en el servidor (undefined no se envía)
     });
   };
 
@@ -986,7 +999,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                   <div className="p-3">
                     <p className="text-xs font-bold text-[var(--text-primary)] truncate">{item.name || item.type}</p>
                     {item.condition && (
-                      <p className="text-[10px] text-[var(--text-muted)] capitalize mt-0.5">{item.condition}</p>
+                      <p className="text-[10px] text-[var(--text-muted)] capitalize mt-0.5">{({ new: 'Nuevo', good: 'Buen estado', fair: 'Como nuevo', worn: 'Usado' } as Record<string, string>)[item.condition] || item.condition}</p>
                     )}
                     <button
                       onClick={() => cancelSale(item)}
@@ -1510,7 +1523,7 @@ const Wardrobe: React.FC<WardrobeProps> = ({
                     >
                       <div>
                         <p className="font-bold text-[var(--text-primary)]">{trip.destination}</p>
-                        <p className="text-[10px] uppercase font-bold tracking-widest text-[var(--text-muted)] mt-1">{trip.dateStart}</p>
+                        <p className="text-[10px] uppercase font-bold tracking-widest text-[var(--text-muted)] mt-1">{/^\d{4}-\d{2}-\d{2}$/.test(trip.dateStart) ? new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' }).format(new Date(trip.dateStart + 'T12:00:00')) : trip.dateStart}</p>
                       </div>
                       {isIncluded ? <Check size={20} className="text-primary" /> : <Plus size={20} className="text-[var(--text-muted)]" />}
                     </button>
