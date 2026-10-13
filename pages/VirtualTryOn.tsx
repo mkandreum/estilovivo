@@ -1,7 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { X, Camera, Image, RotateCcw, Save, ChevronUp, ChevronDown, SlidersHorizontal, Undo2, Redo2, Moon, Sun, ZoomIn, ZoomOut, Columns, Lock, Unlock, Download, Layers, Eye, EyeOff, GripVertical, Shirt } from 'lucide-react'
 import type { Garment } from '../types'
-import { removeBg, exportCanvas, type GarmentTransform, type ExportResolution } from '../src/utils/tryOnEngine'
+import { removeBg, exportCanvas, getImageNaturalSize, type ExportResolution } from '../src/utils/tryOnEngine'
+import TryOnStage, { type TryOnStageHandle } from '../components/TryOnStage'
+import {
+  type TryOnLayer, type History, histInit, histPush, histUndo, histRedo, histCanUndo, histCanRedo, histCurrent,
+  layerToTransform, migrateLayerGeom, placeInBox, safeAspect,
+} from '../src/utils/tryOnLayers'
+import { downscaleDataUrl } from '../src/utils/imageUtils'
+import { isCancelError } from '../src/utils/cameraPhoto'
 import { detectBodyPose, smartAutoPlace, type BodyPose } from '../src/utils/poseDetection'
 import { pickPhoto, type CameraSource } from '../src/utils/cameraPhoto'
 import { successImpact, errorImpact } from '../src/utils/haptic'
@@ -12,13 +19,7 @@ import { saveBodyPhoto, loadBodyPhoto, clearBodyPhoto, loadBodyPhotos, removeBod
 
 interface Props { garments: Garment[]; onClose: () => void; user?: any }
 
-interface Layer {
-  id: string; garment: Garment; url: string
-  x: number; y: number; w: number; h: number
-  rotation: number; opacity: number
-  flipX: boolean; flipY: boolean
-  locked: boolean
-}
+type Layer = TryOnLayer<Garment>
 
 const CATS = [
   { k: 'all', l: 'Todo' }, { k: 'top', l: 'Top' }, { k: 'bottom', l: 'Bottom' },
@@ -78,81 +79,6 @@ function autoPos(pose: BodyPose | null, type: string, pw: number, ph: number): {
   else { r.w = pw * 0.48; r.h = ph * 0.3; r.x = (pw - r.w) / 2; r.y = ph * 0.14 }
   return r
 }
-
-const MAX_HISTORY = 50
-
-interface SelectionHandlesProps {
-  layer: Layer; bodyDim: { w: number; h: number }; containerW: number
-  onHandleDown: (e: React.MouseEvent, handle: string) => void
-  onHandleTouch: (e: React.TouchEvent, handle: string) => void
-}
-
-const SelectionHandles = React.memo(({ layer, bodyDim, containerW, onHandleDown, onHandleTouch }: SelectionHandlesProps) => {
-  const l = layer
-  const rs = containerW / bodyDim.w
-  const halfW = l.w * rs / 2, halfH = l.h * rs / 2
-  const rotLen = Math.min(30, halfH * 0.5)
-  const pct = (v: number, base: number) => `${(v / (base || 1)) * 100}%`
-  const corners = [
-    { h: 'tl', x: -halfW, y: -halfH },
-    { h: 'tr', x: halfW, y: -halfH },
-    { h: 'bl', x: -halfW, y: halfH },
-    { h: 'br', x: halfW, y: halfH },
-  ]
-  const edges = [
-    { h: 'et', x: 0, y: -halfH, cursor: 'ns-resize' },
-    { h: 'eb', x: 0, y: halfH, cursor: 'ns-resize' },
-    { h: 'el', x: -halfW, y: 0, cursor: 'ew-resize' },
-    { h: 'er', x: halfW, y: 0, cursor: 'ew-resize' },
-  ]
-  return (
-    <div className="absolute pointer-events-none" style={{
-      left: pct(l.x + l.w / 2, bodyDim.w), top: pct(l.y + l.h / 2, bodyDim.h),
-      width: 0, height: 0, transform: `rotate(${l.rotation}deg)`, zIndex: 60,
-    }}>
-      <div className="absolute" style={{
-        left: -halfW, top: -halfH, width: l.w * rs, height: l.h * rs,
-        border: '2px solid rgba(255,255,255,0.9)', boxShadow: '0 0 0 1px rgba(255,77,148,0.5)', borderRadius: '2px',
-      }} />
-      {corners.map(c => (
-        <div key={c.h} data-handle={c.h}
-          onMouseDown={e => onHandleDown(e, c.h)}
-          onTouchStart={e => onHandleTouch(e, c.h)}
-          className="absolute pointer-events-auto"
-          style={{
-            left: c.x - 12, top: c.y - 12, width: 24, height: 24,
-            borderRadius: '2px', backgroundColor: 'white',
-            border: '2px solid var(--color-primary)',
-            cursor: c.h === 'tl' || c.h === 'br' ? 'nwse-resize' : 'nesw-resize', zIndex: 70,
-          }}
-        />
-      ))}
-      {edges.map(e => (
-        <div key={e.h} data-handle={e.h}
-          onMouseDown={ev => onHandleDown(ev, e.h)}
-          onTouchStart={ev => onHandleTouch(ev, e.h)}
-          className="absolute pointer-events-auto"
-          style={{
-            left: e.x - 10, top: e.y - 10, width: 20, height: 20,
-            borderRadius: '50%', backgroundColor: 'white',
-            border: '2px solid var(--color-primary)', cursor: e.cursor, zIndex: 70,
-          }}
-        />
-      ))}
-      <div className="absolute" style={{ left: -1, top: -halfH - rotLen, width: 2, height: rotLen, backgroundColor: 'var(--color-primary)', opacity: 0.7 }} />
-      <div data-handle="rotate"
-        onMouseDown={e => onHandleDown(e, 'rotate')}
-        onTouchStart={e => onHandleTouch(e, 'rotate')}
-        className="absolute pointer-events-auto"
-        style={{
-          left: -8, top: -halfH - rotLen - 8, width: 16, height: 16,
-          borderRadius: '50%', backgroundColor: 'white',
-          border: '2px solid var(--color-primary)', cursor: 'grab', zIndex: 70,
-        }}
-      />
-    </div>
-  )
-})
 
 interface LayersPanelProps {
   layers: Layer[]; active: number; isMobile: boolean
