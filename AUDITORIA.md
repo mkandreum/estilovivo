@@ -10,7 +10,7 @@
 
 | Repositorio | Contenido |
 |---|---|
-| `romecabezasjamd/estilovivo` (este) | Web (React + Vite) y backend (Express + Prisma). Ya no contiene `android/` ni `capacitor.config.ts`. |
+| `mkandreum/estilovivo` (este) | Web (React + Vite) y backend (Express + Prisma). Ya no contiene `android/` ni `capacitor.config.ts`. |
 | `mkandreum/estilovivoapp` | App Android: contenedor Capacitor que carga `https://estilovivo.xyoncloud.win` en remoto, con los plugins nativos y una pantalla sin conexión. |
 
 La web sigue incluyendo los paquetes JS `@capacitor/*` porque son el puente con los plugins nativos cuando se ejecuta dentro de la APK.
