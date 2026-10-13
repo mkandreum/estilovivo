@@ -74,7 +74,21 @@ export async function processImage(
 
     let sourceInput: string | Buffer = inputPath;
     
+    // Si la app ya envía la prenda recortada (PNG con transparencia real) no se vuelve a tocar:
+    // la eliminación de "blancos" dejaría agujeros en las prendas blancas.
+    let alreadyCutOut = false;
     if (removeBg) {
+      try {
+        const meta = await sharp(inputPath).metadata();
+        if (meta.hasAlpha) {
+          const { channels } = await sharp(inputPath).ensureAlpha().stats();
+          const alpha = channels[channels.length - 1];
+          alreadyCutOut = alpha.min < 250; // hay píxeles (semi)transparentes
+        }
+      } catch { /* si falla la lectura, se sigue con el flujo normal */ }
+    }
+
+    if (removeBg && !alreadyCutOut) {
       try {
         const { data, info } = await sharp(inputPath).rotate().ensureAlpha().raw().toBuffer({ resolveWithObject: true });
         const pixels = new Uint8Array(data);
